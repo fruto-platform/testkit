@@ -161,16 +161,21 @@ Invalid or non-positive `SSE_INTERVAL` values fall back to the default.
 
 ## Image distribution
 
-The project does not publish a container image yet. Build it locally using the
-commands above. Once publishing is introduced, automated tests must consume an
-immutable digest rather than relying only on a mutable tag:
+Tagged releases publish multi-platform images to GitHub Container Registry:
+
+```text
+ghcr.io/fruto-platform/testkit:v0.0.1
+```
+
+Tags are provided for discovery. Automated tests should consume the immutable
+digest reported by the release workflow:
 
 ```text
 ghcr.io/fruto-platform/testkit@sha256:<digest>
 ```
 
-Publishing, signing, provenance, and release automation will be documented when
-they exist; this repository does not claim those guarantees today.
+The project does not publish a `latest` tag. Signing, SBOMs, and additional
+provenance attestations are outside the current release contract.
 
 ## Development
 

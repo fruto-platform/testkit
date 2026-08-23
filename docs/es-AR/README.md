@@ -164,17 +164,22 @@ predeterminado.
 
 ## Distribución de la imagen
 
-El proyecto todavía no publica una imagen de contenedor. Construí la imagen
-localmente con los comandos anteriores. Cuando se incorpore la publicación, las
-pruebas automatizadas deberán consumir un digest inmutable en lugar de depender
-solamente de un tag mutable:
+Las releases versionadas publican imágenes multiplataforma en GitHub Container
+Registry:
+
+```text
+ghcr.io/fruto-platform/testkit:v0.0.1
+```
+
+Los tags existen para descubrimiento. Las pruebas automatizadas deben consumir el
+digest inmutable informado por el pipeline de release:
 
 ```text
 ghcr.io/fruto-platform/testkit@sha256:<digest>
 ```
 
-La publicación, firma, procedencia y automatización de releases se documentarán
-cuando existan; este repositorio no afirma actualmente esas garantías.
+El proyecto no publica un tag `latest`. La firma, los SBOMs y las attestations
+adicionales de procedencia quedan fuera del contrato actual de release.
 
 ## Desarrollo
 

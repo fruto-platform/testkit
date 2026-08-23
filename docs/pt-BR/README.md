@@ -160,16 +160,22 @@ Valores inválidos ou não positivos de `SSE_INTERVAL` usam o padrão.
 
 ## Distribuição da imagem
 
-O projeto ainda não publica uma imagem de contêiner. Construa-a localmente com os
-comandos acima. Quando a publicação for introduzida, testes automatizados deverão
-consumir um digest imutável, e não depender somente de uma tag mutável:
+Releases versionadas publicam imagens multiplataforma no GitHub Container
+Registry:
+
+```text
+ghcr.io/fruto-platform/testkit:v0.0.1
+```
+
+As tags existem para descoberta. Testes automatizados devem consumir o digest
+imutável informado pela pipeline de release:
 
 ```text
 ghcr.io/fruto-platform/testkit@sha256:<digest>
 ```
 
-Publicação, assinatura, proveniência e automação de release serão documentadas
-quando existirem; este repositório não afirma essas garantias atualmente.
+O projeto não publica uma tag `latest`. Assinatura, SBOMs e attestations adicionais
+de proveniência estão fora do contrato atual de release.
 
 ## Desenvolvimento
 
