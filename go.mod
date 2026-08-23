@@ -1,0 +1,8 @@
+module github.com/fruto-platform/testkit
+
+go 1.26.0
+
+require (
+	github.com/gorilla/websocket v1.5.3
+	github.com/graphql-go/graphql v0.8.1
+)
