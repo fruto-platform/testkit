@@ -172,7 +172,7 @@ Invalid or non-positive `SSE_INTERVAL` values fall back to the default.
 Tagged releases publish multi-platform images to GitHub Container Registry:
 
 ```text
-ghcr.io/fruto-platform/testkit:v0.0.1
+ghcr.io/fruto-platform/testkit:v0.0.2
 ```
 
 Tags are provided for discovery. Automated tests should consume the immutable
