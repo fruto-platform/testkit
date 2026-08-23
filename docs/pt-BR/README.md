@@ -177,7 +177,7 @@ Releases versionadas publicam imagens multiplataforma no GitHub Container
 Registry:
 
 ```text
-ghcr.io/fruto-platform/testkit:v0.1.0
+ghcr.io/fruto-platform/testkit:v0.1.1
 ```
 
 As tags existem para descoberta. Testes automatizados devem consumir o digest
