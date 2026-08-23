@@ -7,7 +7,7 @@ English is the canonical version of this policy.
 
 ## Supported versions
 
-Fruto Testkit is an experimental pre-release project. It has no supported or
+Molejo Testkit is an experimental pre-release project. It has no supported or
 production-ready release. Security fixes are applied to the default branch on a
 best-effort basis.
 
@@ -27,7 +27,7 @@ cluster security boundary.
 
 GitHub private vulnerability reporting is not enabled for this repository yet.
 Until a private reporting channel is available, contact the maintainers through
-the [Fruto Platform organization profile](https://github.com/fruto-platform) to
+the [Molejo Platform organization profile](https://github.com/molejo-platform) to
 request a private channel without including vulnerability details in the initial
 message. Do not disclose the vulnerability in a public issue, discussion, pull
 request, or test log.

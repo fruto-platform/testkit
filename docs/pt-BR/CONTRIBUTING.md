@@ -1,9 +1,9 @@
-# Contribuindo com o Fruto Testkit
+# Contribuindo com o Molejo Testkit
 
 [English](../../CONTRIBUTING.md) |
 [Español (Argentina)](../es-AR/CONTRIBUTING.md)
 
-Obrigado por ajudar a melhorar o Fruto Testkit. O projeto é experimental e possui
+Obrigado por ajudar a melhorar o Molejo Testkit. O projeto é experimental e possui
 releases de pré-lançamento, portanto as mudanças devem ser pequenas, reproduzíveis
 e diretamente relacionadas a uma necessidade de teste.
 
@@ -26,7 +26,7 @@ Você precisa de:
 Clone o repositório e execute os testes de base antes de modificá-lo:
 
 ```sh
-git clone https://github.com/fruto-platform/testkit.git
+git clone https://github.com/molejo-platform/testkit.git
 cd testkit
 go test -race -cover ./...
 go vet ./...

@@ -1,12 +1,12 @@
-# Fruto Testkit
+# Molejo Testkit
 
 [English](../../README.md) |
 [Português (Brasil)](../pt-BR/README.md)
 
-> Proyecto experimental en pre-release. Fruto Testkit es una fixture de pruebas,
+> Proyecto experimental en pre-release. Molejo Testkit es una fixture de pruebas,
 > no una aplicación de producción.
 
-Fruto Testkit es una imagen de contenedor pequeña y determinista para ejercitar
+Molejo Testkit es una imagen de contenedor pequeña y determinista para ejercitar
 aplicaciones HTTP, entrega de aplicaciones en Kubernetes y políticas de red. Un
 único binario Go estático ofrece REST, GraphQL, Server-Sent Events (SSE),
 WebSocket, endpoints de salud y un comando explícito de probe de egreso.
@@ -53,11 +53,11 @@ Construí la imagen para la plataforma local de Docker:
 docker buildx build \
   --load \
   --build-arg VERSION=dev \
-  --tag fruto-testkit:dev \
+  --tag molejo-testkit:dev \
   .
 ```
 
-Ejecutala con el contrato restringido esperado por Fruto Platform:
+Ejecutala con el contrato restringido esperado por Molejo Platform:
 
 ```sh
 docker run --rm \
@@ -65,7 +65,7 @@ docker run --rm \
   --read-only \
   --cap-drop ALL \
   --security-opt no-new-privileges \
-  fruto-testkit:dev
+  molejo-testkit:dev
 ```
 
 Validá el contrato REST:
@@ -131,7 +131,7 @@ build actual:
 Ejecutá diagnósticos de red como un comando explícito de la misma imagen:
 
 ```sh
-docker run --rm fruto-testkit:dev probe https://example.com/
+docker run --rm molejo-testkit:dev probe https://example.com/
 ```
 
 El probe realiza una única solicitud HTTP o HTTPS `GET`, con límites, y emite un
@@ -181,14 +181,14 @@ Las releases versionadas publican imágenes multiplataforma en GitHub Container
 Registry:
 
 ```text
-ghcr.io/fruto-platform/testkit:v0.1.1
+ghcr.io/molejo-platform/testkit:v0.1.1
 ```
 
 Los tags existen para descubrimiento. Las pruebas automatizadas deben consumir el
 digest inmutable informado por el pipeline de release:
 
 ```text
-ghcr.io/fruto-platform/testkit@sha256:<digest>
+ghcr.io/molejo-platform/testkit@sha256:<digest>
 ```
 
 El proyecto no publica un tag `latest`. La firma, los SBOMs y las attestations

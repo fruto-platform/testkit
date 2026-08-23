@@ -1,12 +1,12 @@
-# Fruto Testkit
+# Molejo Testkit
 
 [English](../../README.md) |
 [Español (Argentina)](../es-AR/README.md)
 
-> Projeto experimental em pré-release. O Fruto Testkit é uma fixture de testes,
+> Projeto experimental em pré-release. O Molejo Testkit é uma fixture de testes,
 > não uma aplicação de produção.
 
-O Fruto Testkit é uma pequena imagem de contêiner determinística para exercitar
+O Molejo Testkit é uma pequena imagem de contêiner determinística para exercitar
 aplicações HTTP, entrega de aplicações no Kubernetes e políticas de rede. Um único
 binário Go estático fornece REST, GraphQL, Server-Sent Events (SSE), WebSocket,
 endpoints de saúde e um comando explícito de probe de saída.
@@ -52,11 +52,11 @@ Construa a imagem para a plataforma local do Docker:
 docker buildx build \
   --load \
   --build-arg VERSION=dev \
-  --tag fruto-testkit:dev \
+  --tag molejo-testkit:dev \
   .
 ```
 
-Execute-a com o contrato restrito esperado pela Fruto Platform:
+Execute-a com o contrato restrito esperado pela Molejo Platform:
 
 ```sh
 docker run --rm \
@@ -64,7 +64,7 @@ docker run --rm \
   --read-only \
   --cap-drop ALL \
   --security-opt no-new-privileges \
-  fruto-testkit:dev
+  molejo-testkit:dev
 ```
 
 Valide o contrato REST:
@@ -130,7 +130,7 @@ build atual:
 Execute diagnósticos de rede como um comando explícito da mesma imagem:
 
 ```sh
-docker run --rm fruto-testkit:dev probe https://example.com/
+docker run --rm molejo-testkit:dev probe https://example.com/
 ```
 
 O probe executa uma única requisição HTTP ou HTTPS `GET`, com limites, e emite um
@@ -177,14 +177,14 @@ Releases versionadas publicam imagens multiplataforma no GitHub Container
 Registry:
 
 ```text
-ghcr.io/fruto-platform/testkit:v0.1.1
+ghcr.io/molejo-platform/testkit:v0.1.1
 ```
 
 As tags existem para descoberta. Testes automatizados devem consumir o digest
 imutável informado pela pipeline de release:
 
 ```text
-ghcr.io/fruto-platform/testkit@sha256:<digest>
+ghcr.io/molejo-platform/testkit@sha256:<digest>
 ```
 
 O projeto não publica uma tag `latest`. Assinatura, SBOMs e attestations adicionais

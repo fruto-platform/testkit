@@ -7,7 +7,7 @@ La versión en inglés es la versión canónica de esta política.
 
 ## Versiones soportadas
 
-Fruto Testkit es un proyecto experimental en pre-release. No existe una versión
+Molejo Testkit es un proyecto experimental en pre-release. No existe una versión
 soportada o lista para producción. Las correcciones de seguridad se aplican a la
 branch predeterminada según la disponibilidad de los mantenedores.
 
@@ -28,7 +28,7 @@ siendo un límite de seguridad del cluster.
 
 El reporte privado de vulnerabilidades de GitHub todavía no está habilitado en
 este repositorio. Hasta que exista un canal privado, contactá a los mantenedores
-mediante el [perfil de la organización Fruto Platform](https://github.com/fruto-platform)
+mediante el [perfil de la organización Molejo Platform](https://github.com/molejo-platform)
 para solicitar un canal privado sin incluir detalles de la vulnerabilidad en el
 mensaje inicial. No divulgues la vulnerabilidad en una issue, discussion, pull
 request o log de prueba público.

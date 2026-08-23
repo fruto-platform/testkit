@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Fruto Testkit are documented in this file.
+All notable changes to Molejo Testkit are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -46,8 +46,8 @@ No changes yet.
 
 - Initial multi-platform image publication workflow for GitHub Container Registry.
 
-[Unreleased]: https://github.com/fruto-platform/testkit/compare/v0.1.1...HEAD
-[0.1.1]: https://github.com/fruto-platform/testkit/compare/v0.1.0...v0.1.1
-[0.1.0]: https://github.com/fruto-platform/testkit/compare/v0.0.2...v0.1.0
-[0.0.2]: https://github.com/fruto-platform/testkit/compare/v0.0.1...v0.0.2
-[0.0.1]: https://github.com/fruto-platform/testkit/releases/tag/v0.0.1
+[Unreleased]: https://github.com/molejo-platform/testkit/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/molejo-platform/testkit/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/molejo-platform/testkit/compare/v0.0.2...v0.1.0
+[0.0.2]: https://github.com/molejo-platform/testkit/compare/v0.0.1...v0.0.2
+[0.0.1]: https://github.com/molejo-platform/testkit/releases/tag/v0.0.1

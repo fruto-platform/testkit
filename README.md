@@ -1,12 +1,12 @@
-# Fruto Testkit
+# Molejo Testkit
 
 [Português (Brasil)](docs/pt-BR/README.md) |
 [Español (Argentina)](docs/es-AR/README.md)
 
-> Experimental pre-release project. Fruto Testkit is a test fixture, not a
+> Experimental pre-release project. Molejo Testkit is a test fixture, not a
 > production application.
 
-Fruto Testkit is a small, deterministic container image for exercising HTTP
+Molejo Testkit is a small, deterministic container image for exercising HTTP
 applications, Kubernetes application delivery, and network policies. A single
 static Go binary provides REST, GraphQL, Server-Sent Events (SSE), WebSocket,
 health endpoints, and an explicit outbound probe command.
@@ -52,11 +52,11 @@ Build the image for the local Docker platform:
 docker buildx build \
   --load \
   --build-arg VERSION=dev \
-  --tag fruto-testkit:dev \
+  --tag molejo-testkit:dev \
   .
 ```
 
-Run it using the restricted container contract expected by Fruto Platform:
+Run it using the restricted container contract expected by Molejo Platform:
 
 ```sh
 docker run --rm \
@@ -64,7 +64,7 @@ docker run --rm \
   --read-only \
   --cap-drop ALL \
   --security-opt no-new-privileges \
-  fruto-testkit:dev
+  molejo-testkit:dev
 ```
 
 Verify the REST contract:
@@ -129,7 +129,7 @@ build version:
 Run network diagnostics as an explicit command of the same image:
 
 ```sh
-docker run --rm fruto-testkit:dev probe https://example.com/
+docker run --rm molejo-testkit:dev probe https://example.com/
 ```
 
 The probe performs one bounded HTTP or HTTPS `GET` request and emits a JSON result.
@@ -176,14 +176,14 @@ Invalid or non-positive `SSE_INTERVAL` values fall back to the default.
 Tagged releases publish multi-platform images to GitHub Container Registry:
 
 ```text
-ghcr.io/fruto-platform/testkit:v0.1.1
+ghcr.io/molejo-platform/testkit:v0.1.1
 ```
 
 Tags are provided for discovery. Automated tests should consume the immutable
 digest reported by the release workflow:
 
 ```text
-ghcr.io/fruto-platform/testkit@sha256:<digest>
+ghcr.io/molejo-platform/testkit@sha256:<digest>
 ```
 
 The project does not publish a `latest` tag. Signing, SBOMs, and additional
