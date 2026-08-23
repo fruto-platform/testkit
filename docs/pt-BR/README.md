@@ -77,6 +77,14 @@ Resposta esperada:
 {"status":"ok","version":"dev"}
 ```
 
+## Console no navegador
+
+Abra `http://localhost:8080/` para usar o dashboard embutido. O laboratório de
+WebSocket mostra dois clientes independentes da mesma origem, `Client A` e
+`Client B`, permitindo conectar os dois painéis, enviar uma mensagem por um
+deles e observar o broadcast nos dois logs. As conexões são explícitas: a
+interface não reconecta automaticamente após erro ou encerramento.
+
 ## Exemplos de protocolos
 
 Echo REST:

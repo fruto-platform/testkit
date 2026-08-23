@@ -1,0 +1,40 @@
+{{ define "websocket-client" -}}
+<article class="client-card" data-ws-client data-ws-id="{{ .ID }}" data-ws-url="{{ .Endpoint }}">
+  <header class="client-card__header">
+    <div>
+      <p class="client-card__label">{{ .Label }}</p>
+      <code class="client-card__endpoint">{{ .Endpoint }}</code>
+    </div>
+    <div class="connection-status connection-status--disconnected" data-ws-status role="status" aria-live="polite">
+      <span class="connection-status__dot" aria-hidden="true"></span>
+      <span data-ws-status-text>Disconnected</span>
+    </div>
+  </header>
+
+  <div class="client-card__body">
+    <div class="client-card__actions">
+      <button class="button button--primary" type="button" data-ws-connect>Connect</button>
+      <button class="button button--secondary" type="button" data-ws-disconnect disabled>Disconnect</button>
+    </div>
+
+    <form class="message-form" data-ws-form>
+      <label for="{{ .ID }}-message">Message</label>
+      <div class="message-form__row">
+        <input id="{{ .ID }}-message" name="message" type="text" value="hello from {{ .Label }}" autocomplete="off" required data-ws-message>
+        <button class="button button--send" type="submit" disabled data-ws-send>Send</button>
+      </div>
+      <p class="field-hint" data-ws-hint>Connect before sending a JSON message.</p>
+    </form>
+
+    <div class="event-log" aria-label="{{ .Label }} event log">
+      <div class="event-log__header">
+        <span>Event log</span>
+        <span class="event-log__format">JSON / live</span>
+      </div>
+      <ol class="event-log__list" data-ws-log aria-live="polite">
+        <li class="event-log__empty" data-ws-empty>Waiting for connection…</li>
+      </ol>
+    </div>
+  </div>
+</article>
+{{- end }}

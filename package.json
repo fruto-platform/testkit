@@ -1,0 +1,7 @@
+{
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:frontend": "node --test frontend-tests/ws-client.test.mjs frontend-tests/ws-ui.test.mjs"
+  }
+}

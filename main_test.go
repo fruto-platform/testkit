@@ -51,8 +51,8 @@ func TestStaticAssets(t *testing.T) {
 		contentType string
 		contains    string
 	}{
-		{path: "/", contentType: "text/html; charset=utf-8", contains: "Testkit is running"},
 		{path: "/static/style.css", contentType: "text/css; charset=utf-8", contains: "font-family"},
+		{path: "/static/app.js", contentType: "text/javascript; charset=utf-8", contains: "mountWebSocketClient"},
 	} {
 		t.Run(test.path, func(t *testing.T) {
 			request := httptest.NewRequest(http.MethodGet, test.path, nil)
@@ -70,6 +70,47 @@ func TestStaticAssets(t *testing.T) {
 				t.Fatalf("body does not contain %q: %s", test.contains, responseRecorder.Body.String())
 			}
 		})
+	}
+}
+
+func TestDashboardRendersWebSocketConsole(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	responseRecorder := httptest.NewRecorder()
+
+	newHandler().ServeHTTP(responseRecorder, request)
+
+	if responseRecorder.Code != http.StatusOK {
+		t.Fatalf("status code = %d, want %d", responseRecorder.Code, http.StatusOK)
+	}
+	if got := responseRecorder.Header().Get("Content-Type"); got != "text/html; charset=utf-8" {
+		t.Fatalf("Content-Type = %q, want text/html; charset=utf-8", got)
+	}
+	for _, want := range []string{
+		"Transport console",
+		"build devel",
+		"WebSocket lab",
+		"data-ws-client",
+		"Client A",
+		"Client B",
+		"/static/app.js",
+	} {
+		if !strings.Contains(responseRecorder.Body.String(), want) {
+			t.Fatalf("dashboard does not contain %q", want)
+		}
+	}
+	if got := strings.Count(responseRecorder.Body.String(), "data-ws-client"); got != 2 {
+		t.Fatalf("dashboard contains %d WebSocket clients, want 2", got)
+	}
+}
+
+func TestFrontendTestsAreNotPublicAssets(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "/static/ws-client.test.mjs", nil)
+	responseRecorder := httptest.NewRecorder()
+
+	newHandler().ServeHTTP(responseRecorder, request)
+
+	if responseRecorder.Code != http.StatusNotFound {
+		t.Fatalf("frontend test asset status code = %d, want %d", responseRecorder.Code, http.StatusNotFound)
 	}
 }
 

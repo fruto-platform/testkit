@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html/template"
 	"io"
 	"log"
 	"net"
@@ -34,10 +35,16 @@ const (
 	pingPeriod          = (pongWait * 9) / 10
 )
 
-// staticFiles is embedded so the final scratch image needs no filesystem asset.
+// webFiles is embedded so the final scratch image needs no filesystem asset.
 //
-//go:embed static/*
-var staticFiles embed.FS
+//go:embed templates/*.html templates/components/*.html static/*
+var webFiles embed.FS
+
+var pageTemplates = template.Must(
+	template.New("base.html").
+		Option("missingkey=error").
+		ParseFS(webFiles, "templates/*.html", "templates/components/*.html"),
+)
 
 var version = "devel"
 
@@ -51,6 +58,28 @@ type response struct {
 type item struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
+}
+
+type pageData struct {
+	Title     string
+	Version   string
+	Protocols []protocolCard
+	Clients   []webSocketClientView
+}
+
+type protocolCard struct {
+	Index       string
+	ID          string
+	Name        string
+	Endpoint    string
+	Description string
+	Status      string
+}
+
+type webSocketClientView struct {
+	ID       string
+	Label    string
+	Endpoint string
 }
 
 type handlerConfig struct {
@@ -187,13 +216,27 @@ func staticIndex(writer http.ResponseWriter, request *http.Request) {
 		http.Error(writer, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	data, err := staticFiles.ReadFile("static/index.html")
+	var page bytes.Buffer
+	err := pageTemplates.ExecuteTemplate(&page, "base", pageData{
+		Title:   "Transport Console",
+		Version: version,
+		Protocols: []protocolCard{
+			{Index: "01", ID: "rest", Name: "REST", Endpoint: "/api/*", Description: "HTTP request and response checks", Status: "planned"},
+			{Index: "02", ID: "graphql", Name: "GraphQL", Endpoint: "/graphql", Description: "Query, variables and error checks", Status: "planned"},
+			{Index: "03", ID: "sse", Name: "Server-Sent Events", Endpoint: "/events", Description: "Streaming and reconnect checks", Status: "planned"},
+		},
+		Clients: []webSocketClientView{
+			{ID: "client-a", Label: "Client A", Endpoint: "/ws"},
+			{ID: "client-b", Label: "Client B", Endpoint: "/ws"},
+		},
+	})
 	if err != nil {
+		log.Printf("render dashboard: %v", err)
 		http.Error(writer, "static page unavailable", http.StatusInternalServerError)
 		return
 	}
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = writer.Write(data)
+	_, _ = page.WriteTo(writer)
 }
 
 func staticAsset(writer http.ResponseWriter, request *http.Request) {
@@ -207,7 +250,7 @@ func staticAsset(writer http.ResponseWriter, request *http.Request) {
 		http.NotFound(writer, request)
 		return
 	}
-	data, err := staticFiles.ReadFile("static/" + assetPath)
+	data, err := webFiles.ReadFile("static/" + assetPath)
 	if err != nil {
 		http.NotFound(writer, request)
 		return

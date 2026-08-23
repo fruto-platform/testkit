@@ -1,0 +1,12 @@
+{{ define "protocol-card" -}}
+<article id="{{ .ID }}-card" class="protocol-card protocol-card--planned">
+  <div class="protocol-card__topline">
+    <span class="protocol-index">{{ .Index }}</span>
+    {{ template "status-badge" .Status }}
+  </div>
+  <h3>{{ .Name }}</h3>
+  <code>{{ .Endpoint }}</code>
+  <p>{{ .Description }}</p>
+  <span class="protocol-card__link protocol-card__link--muted">Coming soon <span aria-hidden="true">↗</span></span>
+</article>
+{{- end }}

@@ -77,6 +77,14 @@ Expected response:
 {"status":"ok","version":"dev"}
 ```
 
+## Browser console
+
+Open `http://localhost:8080/` to use the built-in dashboard. The WebSocket lab
+shows two independent same-origin clients, `Client A` and `Client B`, so you can
+connect both panels, send a message from either one, and observe the broadcast
+in each event log. Connections are explicit: the interface does not reconnect
+automatically after an error or close.
+
 ## Protocol examples
 
 REST echo:
@@ -186,6 +194,7 @@ gofmt -w *.go
 go test -race -cover ./...
 go vet ./...
 go mod tidy -diff
+node --test frontend-tests/ws-client.test.mjs frontend-tests/ws-ui.test.mjs
 ```
 
 Build and exercise the final container whenever runtime, embedded assets, probes,
