@@ -129,9 +129,6 @@ code,
 .brand-name {
   font-size: 0.98rem;
   letter-spacing: -0.02em;
-}
-
-.brand-name strong {
   color: var(--accent-strong);
   font-weight: 650;
 }

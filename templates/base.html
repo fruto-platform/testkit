@@ -5,7 +5,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="{{ .T "meta.description" }}">
-    <title>{{ .T .TitleKey }} · Fruto Testkit</title>
+    <title>{{ .T .TitleKey }} · {{ .T "brand.name" }}</title>
     <link rel="stylesheet" href="/static/style.css">
   </head>
   <body data-locale="{{ .Locale }}" data-translations="{{ .TranslationsJSON }}">
@@ -14,7 +14,7 @@
       <header class="topbar" data-testid="topbar">
         <a class="brand" href="{{ .HomeURL }}" aria-label="{{ .T "brand.home_label" }}">
           <span class="brand-mark" aria-hidden="true"><span></span><span></span></span>
-          <span class="brand-name">Fruto <strong>Testkit</strong></span>
+          <span class="brand-name">{{ .T "brand.name" }}</span>
         </a>
         <div class="build-meta">
           <span class="eyebrow">{{ .T "console.label" }}</span>
