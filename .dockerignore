@@ -1,5 +1,9 @@
 .git
 .gitignore
 Dockerfile*
+CONTRIBUTING.md
+LICENSE
 README.md
+SECURITY.md
 *_test.go
+docs

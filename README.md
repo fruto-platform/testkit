@@ -1,65 +1,94 @@
 # Fruto Testkit
 
-Imagem Go autocontida para validar clientes e páginas estáticas que consomem REST, GraphQL, Server-Sent Events (SSE) e WebSocket.
+[Português (Brasil)](docs/pt-BR/README.md) |
+[Español (Argentina)](docs/es-AR/README.md)
 
-## Executar
+> Experimental pre-release project. Fruto Testkit is a test fixture, not a
+> production application.
 
-```sh
-docker build --tag fruto-testkit .
-docker run --rm --publish 8080:8080 fruto-testkit
-```
+Fruto Testkit is a small, deterministic container image for exercising HTTP
+applications, Kubernetes application delivery, and network policies. A single
+static Go binary provides REST, GraphQL, Server-Sent Events (SSE), WebSocket,
+health endpoints, and an explicit outbound probe command.
 
-A página estática fica disponível em <http://localhost:8080/>. A imagem executa como UID/GID `65532:65532`.
+The public HTTP server and the network probe are intentionally separate. Running
+the server cannot turn a publicly exposed test workload into an outbound proxy;
+network diagnostics require an explicit container command.
 
-O intervalo dos eventos SSE pode ser alterado sem rebuild:
+## Capabilities
 
-```sh
-docker run --rm --publish 8080:8080 --env SSE_INTERVAL=250ms fruto-testkit
-```
-
-## Endpoints
-
-| Endpoint | Uso |
+| Capability | Interface |
 | --- | --- |
-| `GET /` | Página HTML estática embutida |
-| `GET /static/style.css` | Asset estático embutido |
-| `GET /healthz` | Liveness determinístico |
-| `GET /readyz` | Readiness determinístico |
-| `GET /api/status` | REST status/version |
-| `GET /api/items` | Lista REST determinística |
-| `POST /api/echo` | Echo de um payload JSON |
-| `POST /graphql` | Query GraphQL |
-| `GET /events` | Stream SSE persistente |
-| `GET /ws` | WebSocket JSON com echo e broadcast |
+| Static page | `GET /` |
+| Static asset | `GET /static/style.css` |
+| Liveness | `GET /healthz` |
+| Readiness | `GET /readyz` |
+| Unready response | `GET /not-ready` |
+| REST status | `GET /api/status` |
+| REST collection | `GET /api/items` |
+| REST echo | `POST /api/echo` |
+| GraphQL | `POST /graphql` |
+| Server-Sent Events | `GET /events` |
+| WebSocket echo and broadcast | `GET /ws` |
+| HTTP/HTTPS network probe | `testkit probe URL` |
 
-O endpoint `/not-ready` permanece disponível para testes de status `503`.
+Responses include the build version injected through the Docker `VERSION` build
+argument. This makes rollout and transport tests observable without changing the
+logical identity of the workload.
 
-O servidor HTTP não expõe um proxy de saída. Para validar DNS, TLS, egress ou
-NetworkPolicies, execute o probe controlado da própria imagem:
+## Prerequisites
+
+- Go 1.26.x.
+- Docker Engine or Docker Desktop with Buildx enabled.
+- `curl` for the examples.
+
+## Build and run locally
+
+Build the image for the local Docker platform:
 
 ```sh
-docker run --rm fruto-testkit probe https://example.com/
+docker buildx build \
+  --load \
+  --build-arg VERSION=dev \
+  --tag fruto-testkit:dev \
+  .
 ```
 
-O comando termina com código `0` para respostas HTTP `2xx`, `1` para falha de
-conexão ou resposta não saudável e `2` para argumentos inválidos. Em Kubernetes,
-ele pode ser executado como um Job no namespace, com labels e ServiceAccount
-correspondentes à política de rede que está sendo testada.
-
-## Exemplos
-
-REST:
+Run it using the restricted container contract expected by Fruto Platform:
 
 ```sh
-curl http://localhost:8080/api/status
-curl http://localhost:8080/api/items
+docker run --rm \
+  --publish 8080:8080 \
+  --read-only \
+  --cap-drop ALL \
+  --security-opt no-new-privileges \
+  fruto-testkit:dev
+```
+
+Verify the REST contract:
+
+```sh
+curl --fail http://localhost:8080/api/status
+```
+
+Expected response:
+
+```json
+{"status":"ok","version":"dev"}
+```
+
+## Protocol examples
+
+REST echo:
+
+```sh
 curl --json '{"hello":"world"}' http://localhost:8080/api/echo
 ```
 
 GraphQL:
 
 ```sh
-curl --json '{"query":"{ status version echo(message: \\"hello\\") }"}' \
+curl --json '{"query":"{ status version echo(message: \"hello\") }"}' \
   http://localhost:8080/graphql
 ```
 
@@ -76,8 +105,107 @@ wscat --connect ws://localhost:8080/ws
 > {"message":"hello"}
 ```
 
-Cada cliente WebSocket conectado recebe a mensagem no formato:
+Each connected WebSocket client receives the broadcast message with the current
+build version:
 
 ```json
-{"message":"hello","version":"devel"}
+{"message":"hello","version":"dev"}
 ```
+
+## Network probe
+
+Run network diagnostics as an explicit command of the same image:
+
+```sh
+docker run --rm fruto-testkit:dev probe https://example.com/
+```
+
+The probe performs one bounded HTTP or HTTPS `GET` request and emits a JSON result.
+Its exit codes form the automation contract:
+
+| Exit code | Meaning |
+| --- | --- |
+| `0` | The destination returned HTTP `2xx`. |
+| `1` | The request failed or returned a non-`2xx` response. |
+| `2` | The command arguments or URL are invalid. |
+
+To verify Kubernetes NetworkPolicies, run the probe as a short-lived Job in the
+namespace under test. Apply the labels and ServiceAccount whose network identity
+you want to validate, then assert the Job exit code. This keeps the source,
+destination, and expected allow-or-deny result explicit.
+
+## Container contract
+
+- Listens on TCP port `8080`.
+- Runs as UID/GID `65532:65532`.
+- Supports a read-only root filesystem.
+- Requires no Linux capabilities or privilege escalation.
+- Includes a CA bundle for HTTPS probes.
+- Embeds all static assets in the binary.
+- Builds reproducibly for BuildKit target platforms, including `linux/amd64` and
+  `linux/arm64`.
+- Handles `SIGTERM` and drains HTTP, SSE, and WebSocket connections with a bounded
+  shutdown.
+
+The HTTP server accepts same-origin WebSocket connections and clients that omit
+the `Origin` header, such as command-line test clients. Cross-origin browser
+connections are rejected.
+
+## Configuration
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `SSE_INTERVAL` | `1s` | Interval between SSE status events. |
+
+Invalid or non-positive `SSE_INTERVAL` values fall back to the default.
+
+## Image distribution
+
+The project does not publish a container image yet. Build it locally using the
+commands above. Once publishing is introduced, automated tests must consume an
+immutable digest rather than relying only on a mutable tag:
+
+```text
+ghcr.io/fruto-platform/testkit@sha256:<digest>
+```
+
+Publishing, signing, provenance, and release automation will be documented when
+they exist; this repository does not claim those guarantees today.
+
+## Development
+
+Run the local quality gate:
+
+```sh
+gofmt -w *.go
+go test -race -cover ./...
+go vet ./...
+go mod tidy -diff
+```
+
+Build and exercise the final container whenever runtime, embedded assets, probes,
+or the Dockerfile changes.
+
+## Documentation
+
+English is the canonical documentation language. Available translations:
+
+- [Português (Brasil)](docs/pt-BR/README.md)
+- [Español (Argentina)](docs/es-AR/README.md)
+
+Translations preserve commands, paths, endpoint names, fields, and protocol
+identifiers in English. If translated content diverges, the English version
+defines the current contract.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) before proposing a change.
+
+## Security
+
+Do not report vulnerabilities through public issues. Follow
+[SECURITY.md](SECURITY.md).
+
+## License
+
+Licensed under the [Apache License 2.0](LICENSE).
