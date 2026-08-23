@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -279,44 +278,6 @@ func TestWebSocketEchoAndBroadcast(t *testing.T) {
 			}
 			if message.Message != "hello" || message.Version != version {
 				t.Fatalf("unexpected WebSocket message: %#v", message)
-			}
-		})
-	}
-}
-
-func TestOutbound(t *testing.T) {
-	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
-		writer.WriteHeader(http.StatusOK)
-		_, _ = writer.Write([]byte("controlled-upstream"))
-	}))
-	t.Cleanup(upstream.Close)
-
-	request := httptest.NewRequest(http.MethodGet, "/outbound?url="+url.QueryEscape(upstream.URL), nil)
-	responseRecorder := httptest.NewRecorder()
-	newHandler().ServeHTTP(responseRecorder, request)
-
-	if responseRecorder.Code != http.StatusOK {
-		t.Fatalf("status code = %d, want %d: %s", responseRecorder.Code, http.StatusOK, responseRecorder.Body.String())
-	}
-	var payload response
-	if err := json.NewDecoder(responseRecorder.Body).Decode(&payload); err != nil {
-		t.Fatalf("decode outbound response: %v", err)
-	}
-	if payload.UpstreamStatus != http.StatusOK || payload.UpstreamBody != "controlled-upstream" {
-		t.Fatalf("unexpected outbound response: %#v", payload)
-	}
-}
-
-func TestOutboundRejectsInvalidURL(t *testing.T) {
-	for _, rawURL := range []string{"", "relative", "file:///etc/passwd"} {
-		t.Run(strings.ReplaceAll(rawURL, "/", "_"), func(t *testing.T) {
-			request := httptest.NewRequest(http.MethodGet, "/outbound?url="+url.QueryEscape(rawURL), nil)
-			responseRecorder := httptest.NewRecorder()
-
-			newHandler().ServeHTTP(responseRecorder, request)
-
-			if responseRecorder.Code != http.StatusBadRequest {
-				t.Fatalf("status code = %d, want %d", responseRecorder.Code, http.StatusBadRequest)
 			}
 		})
 	}

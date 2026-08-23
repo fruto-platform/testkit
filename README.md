@@ -31,9 +31,20 @@ docker run --rm --publish 8080:8080 --env SSE_INTERVAL=250ms fruto-testkit
 | `POST /graphql` | Query GraphQL |
 | `GET /events` | Stream SSE persistente |
 | `GET /ws` | WebSocket JSON com echo e broadcast |
-| `GET /outbound?url=...` | GET controlado a um upstream HTTP/HTTPS |
 
 O endpoint `/not-ready` permanece disponível para testes de status `503`.
+
+O servidor HTTP não expõe um proxy de saída. Para validar DNS, TLS, egress ou
+NetworkPolicies, execute o probe controlado da própria imagem:
+
+```sh
+docker run --rm fruto-testkit probe https://example.com/
+```
+
+O comando termina com código `0` para respostas HTTP `2xx`, `1` para falha de
+conexão ou resposta não saudável e `2` para argumentos inválidos. Em Kubernetes,
+ele pode ser executado como um Job no namespace, com labels e ServiceAccount
+correspondentes à política de rede que está sendo testada.
 
 ## Exemplos
 

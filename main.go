@@ -2,16 +2,21 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
+	"os/signal"
 	"strings"
+	"sync"
+	"syscall"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -19,14 +24,14 @@ import (
 )
 
 const (
-	maxUpstreamBodyBytes = 64 * 1024
-	maxJSONBodyBytes     = 64 * 1024
-	maxGraphQLBodyBytes  = 16 * 1024
-	maxWebSocketBytes    = 4 * 1024
-	defaultSSEInterval   = time.Second
-	writeWait            = 10 * time.Second
-	pongWait             = 60 * time.Second
-	pingPeriod           = (pongWait * 9) / 10
+	maxJSONBodyBytes    = 64 * 1024
+	maxGraphQLBodyBytes = 16 * 1024
+	maxWebSocketBytes   = 4 * 1024
+	defaultSSEInterval  = time.Second
+	shutdownTimeout     = 5 * time.Second
+	writeWait           = 10 * time.Second
+	pongWait            = 60 * time.Second
+	pingPeriod          = (pongWait * 9) / 10
 )
 
 // staticFiles is embedded so the final scratch image needs no filesystem asset.
@@ -52,19 +57,68 @@ type handlerConfig struct {
 	sseInterval time.Duration
 }
 
+type application struct {
+	handler http.Handler
+	hub     *webSocketHub
+}
+
 func main() {
+	if len(os.Args) > 1 {
+		if os.Args[1] == "probe" {
+			os.Exit(runProbe(context.Background(), os.Args[2:], os.Stdout, os.Stderr))
+		}
+		fmt.Fprintln(os.Stderr, "usage: testkit [probe URL]")
+		os.Exit(2)
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	listener, err := net.Listen("tcp", ":8080")
+	if err != nil {
+		log.Fatal(err)
+	}
+	app := newApplication(handlerConfig{sseInterval: sseIntervalFromEnv()})
+	log.Printf("testkit %s listening on %s", version, listener.Addr())
+	if err := serve(ctx, listener, app); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func serve(ctx context.Context, listener net.Listener, app *application) error {
 	server := &http.Server{
-		Addr:              ":8080",
-		Handler:           newHandler(),
+		Handler:           app.handler,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      0,
 		IdleTimeout:       30 * time.Second,
+		BaseContext: func(net.Listener) context.Context {
+			return ctx
+		},
 	}
 
-	log.Printf("testkit %s listening on %s", version, server.Addr)
-	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		log.Fatal(err)
+	serveResult := make(chan error, 1)
+	go func() {
+		serveResult <- server.Serve(listener)
+	}()
+
+	select {
+	case err := <-serveResult:
+		app.close()
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+		return err
+	case <-ctx.Done():
+		app.close()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer cancel()
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			return fmt.Errorf("shutdown HTTP server: %w", err)
+		}
+		if err := <-serveResult; err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return err
+		}
+		return nil
 	}
 }
 
@@ -73,6 +127,10 @@ func newHandler() http.Handler {
 }
 
 func newHandlerWithConfig(config handlerConfig) http.Handler {
+	return newApplication(config).handler
+}
+
+func newApplication(config handlerConfig) *application {
 	if config.sseInterval <= 0 {
 		config.sseInterval = defaultSSEInterval
 	}
@@ -86,7 +144,6 @@ func newHandlerWithConfig(config handlerConfig) http.Handler {
 	mux.HandleFunc("/not-ready", exactGET("/not-ready", func(writer http.ResponseWriter, _ *http.Request) {
 		writeJSON(writer, http.StatusServiceUnavailable, response{Status: "not-ready", Version: version})
 	}))
-	mux.HandleFunc("/outbound", exactGET("/outbound", outbound))
 	mux.HandleFunc("/api/status", exactGET("/api/status", writeOK))
 	mux.HandleFunc("/api/items", exactGET("/api/items", listItems))
 	mux.HandleFunc("/api/echo", apiEcho)
@@ -98,7 +155,11 @@ func newHandlerWithConfig(config handlerConfig) http.Handler {
 		webSocket(writer, request, webSocketHub)
 	})
 
-	return mux
+	return &application{handler: mux, hub: webSocketHub}
+}
+
+func (app *application) close() {
+	app.hub.close()
 }
 
 func exactGET(path string, handler http.HandlerFunc) http.HandlerFunc {
@@ -185,53 +246,6 @@ func apiEcho(writer http.ResponseWriter, request *http.Request) {
 		Method string          `json:"method"`
 		Path   string          `json:"path"`
 	}{Data: payload, Method: request.Method, Path: request.URL.Path})
-}
-
-func outbound(writer http.ResponseWriter, request *http.Request) {
-	upstream, err := url.ParseRequestURI(request.URL.Query().Get("url"))
-	if err != nil || upstream.Host == "" || (upstream.Scheme != "http" && upstream.Scheme != "https") {
-		http.Error(writer, "url must be an absolute HTTP or HTTPS URL", http.StatusBadRequest)
-		return
-	}
-
-	client := &http.Client{
-		Timeout: 5 * time.Second,
-		CheckRedirect: func(redirected *http.Request, _ []*http.Request) error {
-			if redirected.URL.Scheme != "http" && redirected.URL.Scheme != "https" {
-				return fmt.Errorf("unsupported redirect scheme %q", redirected.URL.Scheme)
-			}
-			return nil
-		},
-	}
-	upstreamRequest, err := http.NewRequestWithContext(request.Context(), http.MethodGet, upstream.String(), nil)
-	if err != nil {
-		http.Error(writer, "create upstream request", http.StatusBadGateway)
-		return
-	}
-	upstreamRequest.Header.Set("User-Agent", "fruto-testkit/"+version)
-
-	upstreamResponse, err := client.Do(upstreamRequest)
-	if err != nil {
-		http.Error(writer, "upstream request failed", http.StatusBadGateway)
-		return
-	}
-	defer upstreamResponse.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(upstreamResponse.Body, maxUpstreamBodyBytes))
-	if err != nil {
-		http.Error(writer, "read upstream response", http.StatusBadGateway)
-		return
-	}
-	if upstreamResponse.StatusCode < http.StatusOK || upstreamResponse.StatusCode >= http.StatusMultipleChoices {
-		http.Error(writer, "upstream returned a non-success status", http.StatusBadGateway)
-		return
-	}
-
-	writeJSON(writer, http.StatusOK, response{
-		Status:         "ok",
-		Version:        version,
-		UpstreamStatus: upstreamResponse.StatusCode,
-		UpstreamBody:   string(body),
-	})
 }
 
 func graphQL(writer http.ResponseWriter, request *http.Request) {
@@ -340,50 +354,78 @@ type wsClient struct {
 }
 
 type webSocketHub struct {
-	register   chan *wsClient
-	unregister chan *wsClient
-	broadcast  chan []byte
-	clients    map[*wsClient]struct{}
+	mutex   sync.Mutex
+	clients map[*wsClient]struct{}
+	closed  bool
 }
 
 func newWebSocketHub() *webSocketHub {
-	hub := &webSocketHub{
-		register:   make(chan *wsClient),
-		unregister: make(chan *wsClient),
-		broadcast:  make(chan []byte),
-		clients:    make(map[*wsClient]struct{}),
-	}
-	go hub.run()
-	return hub
+	return &webSocketHub{clients: make(map[*wsClient]struct{})}
 }
 
-func (hub *webSocketHub) run() {
-	for {
+func (hub *webSocketHub) register(client *wsClient) bool {
+	hub.mutex.Lock()
+	defer hub.mutex.Unlock()
+	if hub.closed {
+		return false
+	}
+	hub.clients[client] = struct{}{}
+	return true
+}
+
+func (hub *webSocketHub) unregister(client *wsClient) {
+	hub.mutex.Lock()
+	defer hub.mutex.Unlock()
+	if _, ok := hub.clients[client]; ok {
+		delete(hub.clients, client)
+		close(client.send)
+	}
+}
+
+func (hub *webSocketHub) send(message []byte) {
+	hub.mutex.Lock()
+	defer hub.mutex.Unlock()
+	for client := range hub.clients {
 		select {
-		case client := <-hub.register:
-			hub.clients[client] = struct{}{}
-		case client := <-hub.unregister:
-			if _, ok := hub.clients[client]; ok {
-				delete(hub.clients, client)
-				close(client.send)
-			}
-		case message := <-hub.broadcast:
-			for client := range hub.clients {
-				select {
-				case client.send <- message:
-				default:
-					delete(hub.clients, client)
-					close(client.send)
-				}
-			}
+		case client.send <- message:
+		default:
+			delete(hub.clients, client)
+			close(client.send)
+			_ = client.conn.Close()
 		}
+	}
+}
+
+func (hub *webSocketHub) close() {
+	hub.mutex.Lock()
+	defer hub.mutex.Unlock()
+	if hub.closed {
+		return
+	}
+	hub.closed = true
+	for client := range hub.clients {
+		delete(hub.clients, client)
+		close(client.send)
+		_ = client.conn.Close()
 	}
 }
 
 var webSocketUpgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
-	CheckOrigin:     func(*http.Request) bool { return true },
+	CheckOrigin:     sameWebSocketOrigin,
+}
+
+func sameWebSocketOrigin(request *http.Request) bool {
+	origin := request.Header.Get("Origin")
+	if origin == "" {
+		return true
+	}
+	parsedOrigin, err := url.Parse(origin)
+	if err != nil || (parsedOrigin.Scheme != "http" && parsedOrigin.Scheme != "https") {
+		return false
+	}
+	return strings.EqualFold(parsedOrigin.Host, request.Host)
 }
 
 func webSocket(writer http.ResponseWriter, request *http.Request, hub *webSocketHub) {
@@ -392,9 +434,12 @@ func webSocket(writer http.ResponseWriter, request *http.Request, hub *webSocket
 		return
 	}
 	client := &wsClient{hub: hub, conn: connection, send: make(chan []byte, 16)}
-	client.hub.register <- client
+	if !client.hub.register(client) {
+		_ = connection.Close()
+		return
+	}
 	defer func() {
-		client.hub.unregister <- client
+		client.hub.unregister(client)
 		_ = connection.Close()
 	}()
 
@@ -419,7 +464,7 @@ func (client *wsClient) readPump() {
 		if err != nil {
 			return
 		}
-		client.hub.broadcast <- message
+		client.hub.send(message)
 	}
 }
 
