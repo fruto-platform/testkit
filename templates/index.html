@@ -2,15 +2,15 @@
 <main id="main-content" class="page-content">
   <section class="hero" aria-labelledby="page-title">
     <div class="hero-copy">
-      <p class="eyebrow accent-text">Protocol lab / 01</p>
-      <h1 id="page-title">See every connection<br><em>as it happens.</em></h1>
-      <p class="hero-lede">A focused browser console for exercising disposable transport fixtures. Connect two clients, send a message, and watch the broadcast travel.</p>
+      <p class="eyebrow accent-text">{{ .T "home.eyebrow" }}</p>
+      <h1 id="page-title">{{ .T "home.title" }}<br><em>{{ .T "home.title_emphasis" }}</em></h1>
+      <p class="hero-lede">{{ .T "home.lede" }}</p>
     </div>
-    <div class="hero-note" aria-label="Current test scope">
+    <div class="hero-note" aria-label="{{ .T "home.scope_label" }}">
       <span class="hero-note__dot" aria-hidden="true"></span>
       <div>
-        <strong>WebSocket lab active</strong>
-        <span>REST, GraphQL and SSE are queued next.</span>
+        <strong>{{ .T "home.websocket_active" }}</strong>
+        <span>{{ .T "home.future_protocols" }}</span>
       </div>
     </div>
   </section>
@@ -18,48 +18,30 @@
   <section class="protocol-overview" aria-labelledby="protocols-title">
     <div class="section-heading">
       <div>
-        <p class="eyebrow">Surface map</p>
-        <h2 id="protocols-title">Transport coverage</h2>
+        <p class="eyebrow">{{ .T "home.surface_map" }}</p>
+        <h2 id="protocols-title">{{ .T "home.transport_coverage" }}</h2>
       </div>
-      <span class="section-count">{{ len .Protocols }} queued · 1 active</span>
+      <span class="section-count">{{ len .Protocols }} {{ .T "home.queued" }} · 1 {{ .T "home.active" }}</span>
     </div>
     <div class="protocol-grid">
       {{ range .Protocols }}{{ template "protocol-card" . }}{{ end }}
       <article class="protocol-card protocol-card--active">
         <div class="protocol-card__topline">
           <span class="protocol-index">04</span>
-          {{ template "status-badge" "active" }}
+          {{ template "status-badge" $.ActiveStatus }}
         </div>
-        <h3>WebSocket</h3>
-        <code>/ws</code>
-        <p>Bidirectional messages and multi-client broadcast.</p>
-        <a class="protocol-card__link" href="#websocket-lab">Open lab <span aria-hidden="true">↓</span></a>
+        <h3>{{ .T "home.websocket_name" }}</h3>
+        <code>{{ .T "home.websocket_endpoint" }}</code>
+        <p>{{ .T "home.websocket_description" }}</p>
+        <a class="protocol-card__link" href="{{ .WebSocketURL }}">{{ .T "home.open_lab" }} <span aria-hidden="true">↗</span></a>
       </article>
     </div>
   </section>
 
-  <section id="websocket-lab" class="lab-section" aria-labelledby="websocket-title">
-    <div class="section-heading section-heading--lab">
-      <div>
-        <p class="eyebrow accent-text">Live transport</p>
-        <h2 id="websocket-title">WebSocket lab</h2>
-        <p class="section-description">Use two independent connections to verify echo, broadcast and close behavior. Both clients share the current page origin.</p>
-      </div>
-      <div class="lab-contract">
-        <span>contract</span>
-        <code>/ws</code>
-      </div>
-    </div>
-
-    <div class="client-grid">
-      {{ range .Clients }}{{ template "websocket-client" . }}{{ end }}
-    </div>
-  </section>
-
   <footer class="page-footer">
-    <span>Fruto Testkit</span>
+    <span>{{ .T "footer.name" }}</span>
     <span class="footer-separator" aria-hidden="true">/</span>
-    <span>Same-origin browser fixture</span>
+    <span>{{ .T "footer.fixture" }}</span>
   </footer>
 </main>
 {{- end }}

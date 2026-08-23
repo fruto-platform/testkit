@@ -1,24 +1,33 @@
 {{ define "base" -}}
 <!doctype html>
-<html lang="en">
+<html lang="{{ .Locale }}">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="Fruto Testkit transport console">
-    <title>{{ .Title }} · Fruto Testkit</title>
+    <meta name="description" content="{{ .T "meta.description" }}">
+    <title>{{ .T .TitleKey }} · Fruto Testkit</title>
     <link rel="stylesheet" href="/static/style.css">
   </head>
-  <body>
-    <a class="skip-link" href="#main-content">Skip to main content</a>
+  <body data-locale="{{ .Locale }}" data-translations="{{ .TranslationsJSON }}">
+    <a class="skip-link" href="#main-content">{{ .T "navigation.skip" }}</a>
     <div class="app-shell">
       <header class="topbar" data-testid="topbar">
-        <a class="brand" href="/" aria-label="Fruto Testkit home">
+        <a class="brand" href="{{ .HomeURL }}" aria-label="{{ .T "brand.home_label" }}">
           <span class="brand-mark" aria-hidden="true"><span></span><span></span></span>
           <span class="brand-name">Fruto <strong>Testkit</strong></span>
         </a>
         <div class="build-meta">
-          <span class="eyebrow">Transport console</span>
-          <span class="version-badge">build {{ .Version }}</span>
+          <span class="eyebrow">{{ .T "console.label" }}</span>
+          <span class="version-badge">{{ .T "build.label" }} {{ .Version }}</span>
+          <nav class="language-switcher" aria-label="{{ .T "navigation.language" }}">
+            {{ range .Languages }}
+              {{ if .Current }}
+              <span class="language-switcher__current" lang="{{ .Code }}" aria-current="page">{{ .Label }}</span>
+              {{ else }}
+              <a href="{{ .URL }}" lang="{{ .Code }}">{{ .Label }}</a>
+              {{ end }}
+            {{ end }}
+          </nav>
         </div>
       </header>
 

@@ -19,7 +19,9 @@ network diagnostics require an explicit container command.
 
 | Capability | Interface |
 | --- | --- |
-| Static page | `GET /` |
+| Language detection aliases | `GET /`, `GET /websocket` |
+| Localized browser pages | `GET /en/`, `GET /pt-BR/`, `GET /es-AR/` |
+| Localized WebSocket console | `GET /en/websocket`, `GET /pt-BR/websocket`, `GET /es-AR/websocket` |
 | Static asset | `GET /static/style.css` |
 | Liveness | `GET /healthz` |
 | Readiness | `GET /readyz` |
@@ -79,11 +81,13 @@ Expected response:
 
 ## Browser console
 
-Open `http://localhost:8080/` to use the built-in dashboard. The WebSocket lab
-shows two independent same-origin clients, `Client A` and `Client B`, so you can
-connect both panels, send a message from either one, and observe the broadcast
-in each event log. Connections are explicit: the interface does not reconnect
-automatically after an error or close.
+Open `http://localhost:8080/` to let the server detect the browser language, or
+use a localized URL directly: `/en/`, `/pt-BR/` or `/es-AR/`. The WebSocket lab
+is available at the matching `/websocket` path. It shows two independent
+same-origin clients, `Client A` and `Client B`, so you can connect both panels,
+send a message from either one, and switch between raw JSON events and a chat
+view with local send/receive timestamps. Connections are explicit: the
+interface does not reconnect automatically after an error or close.
 
 ## Protocol examples
 

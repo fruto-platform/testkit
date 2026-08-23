@@ -20,7 +20,9 @@ contenedor.
 
 | Capacidad | Interfaz |
 | --- | --- |
-| Página estática | `GET /` |
+| Alias de detección de idioma | `GET /`, `GET /websocket` |
+| Páginas localizadas | `GET /en/`, `GET /pt-BR/`, `GET /es-AR/` |
+| Consola WebSocket localizada | `GET /en/websocket`, `GET /pt-BR/websocket`, `GET /es-AR/websocket` |
 | Asset estático | `GET /static/style.css` |
 | Liveness | `GET /healthz` |
 | Readiness | `GET /readyz` |
@@ -80,12 +82,14 @@ Respuesta esperada:
 
 ## Consola del navegador
 
-Abra `http://localhost:8080/` para usar el dashboard integrado. El laboratorio
-WebSocket muestra dos clientes independientes del mismo origen, `Client A` y
-`Client B`, para conectar ambos paneles, enviar un mensaje desde cualquiera y
-observar el broadcast en los dos registros de eventos. Las conexiones son
-explícitas: la interfaz no se reconecta automáticamente después de un error o
-cierre.
+Abra `http://localhost:8080/` para detectar el idioma del navegador o use
+directamente `/en/`, `/pt-BR/` o `/es-AR/`. El laboratorio WebSocket está en el
+camino `/websocket` correspondiente. Muestra dos clientes
+independientes del mismo origen, `Client A` y `Client B`, para conectar ambos
+paneles, enviar un mensaje desde cualquiera y alternar entre eventos JSON sin
+procesar y una vista de chat con horarios locales de envío y recepción. Las
+conexiones son explícitas: la interfaz no se reconecta automáticamente después
+de un error o cierre.
 
 ## Ejemplos de protocolos
 

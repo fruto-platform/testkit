@@ -1,5 +1,5 @@
 {{ define "websocket-client" -}}
-<article class="client-card" data-ws-client data-ws-id="{{ .ID }}" data-ws-url="{{ .Endpoint }}">
+<article class="client-card" data-ws-client data-ws-id="{{ .ID }}" data-ws-label="{{ .Label }}" data-ws-url="{{ .Endpoint }}">
   <header class="client-card__header">
     <div>
       <p class="client-card__label">{{ .Label }}</p>
@@ -7,34 +7,48 @@
     </div>
     <div class="connection-status connection-status--disconnected" data-ws-status role="status" aria-live="polite">
       <span class="connection-status__dot" aria-hidden="true"></span>
-      <span data-ws-status-text>Disconnected</span>
+      <span data-ws-status-text>{{ .T "state.disconnected" }}</span>
     </div>
   </header>
 
   <div class="client-card__body">
     <div class="client-card__actions">
-      <button class="button button--primary" type="button" data-ws-connect>Connect</button>
-      <button class="button button--secondary" type="button" data-ws-disconnect disabled>Disconnect</button>
+      <button class="button button--primary" type="button" data-ws-connect>{{ .T "websocket.connect" }}</button>
+      <button class="button button--secondary" type="button" data-ws-disconnect disabled>{{ .T "websocket.disconnect" }}</button>
     </div>
 
     <form class="message-form" data-ws-form>
-      <label for="{{ .ID }}-message">Message</label>
+      <label for="{{ .ID }}-message">{{ .T "websocket.message_label" }}</label>
       <div class="message-form__row">
-        <input id="{{ .ID }}-message" name="message" type="text" value="hello from {{ .Label }}" autocomplete="off" required data-ws-message>
-        <button class="button button--send" type="submit" disabled data-ws-send>Send</button>
+        <input id="{{ .ID }}-message" name="message" type="text" value="{{ .DefaultMessage }}" autocomplete="off" required data-ws-message>
+        <button class="button button--send" type="submit" disabled data-ws-send>{{ .T "websocket.send" }}</button>
       </div>
-      <p class="field-hint" data-ws-hint>Connect before sending a JSON message.</p>
+      <p class="field-hint" data-ws-hint>{{ .T "websocket.disconnected_hint" }}</p>
     </form>
 
-    <div class="event-log" aria-label="{{ .Label }} event log">
-      <div class="event-log__header">
-        <span>Event log</span>
-        <span class="event-log__format">JSON / live</span>
-      </div>
-      <ol class="event-log__list" data-ws-log aria-live="polite">
-        <li class="event-log__empty" data-ws-empty>Waiting for connection…</li>
-      </ol>
+    <div class="view-switcher" role="tablist" data-ws-view-label="{{ .Label }}" aria-label="{{ .Label }} {{ .T "websocket.view_label" }}">
+      <button id="{{ .ID }}-json-tab" class="view-tab view-tab--active" type="button" role="tab" aria-selected="true" aria-controls="{{ .ID }}-json-panel" data-ws-tab="json">{{ .T "websocket.view.json" }}</button>
+      <button id="{{ .ID }}-chat-tab" class="view-tab" type="button" role="tab" aria-selected="false" aria-controls="{{ .ID }}-chat-panel" data-ws-tab="chat">{{ .T "websocket.view.chat" }}</button>
     </div>
+
+    <section id="{{ .ID }}-json-panel" class="view-panel" role="tabpanel" aria-labelledby="{{ .ID }}-json-tab" data-ws-panel="json">
+      <div class="event-log" data-ws-event-log aria-label="{{ .Label }} {{ .T "websocket.event_log" }}">
+        <div class="event-log__header">
+          <span data-ws-event-log-label>{{ .T "websocket.event_log" }}</span>
+          <span class="event-log__format" data-ws-json-live>{{ .T "websocket.json_live" }}</span>
+        </div>
+        <ol class="event-log__list" data-ws-log aria-live="polite">
+          <li class="event-log__empty" data-ws-empty>{{ .T "websocket.waiting" }}</li>
+        </ol>
+      </div>
+    </section>
+
+    <section id="{{ .ID }}-chat-panel" class="view-panel" role="tabpanel" aria-labelledby="{{ .ID }}-chat-tab" data-ws-panel="chat" hidden>
+      <div class="chat-view" data-ws-chat aria-label="{{ .Label }} {{ .T "websocket.view.chat" }}" aria-live="polite">
+        <p class="chat-view__empty" data-ws-chat-empty>{{ .T "websocket.chat_empty" }}</p>
+      </div>
+      <p class="chat-view__note" data-ws-chat-note>{{ .T "websocket.chat_note" }}</p>
+    </section>
   </div>
 </article>
 {{- end }}

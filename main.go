@@ -40,10 +40,10 @@ const (
 //go:embed templates/*.html templates/components/*.html static/*
 var webFiles embed.FS
 
-var pageTemplates = template.Must(
-	template.New("base.html").
-		Option("missingkey=error").
-		ParseFS(webFiles, "templates/*.html", "templates/components/*.html"),
+var (
+	indexPageTemplates     = newPageTemplates("index.html")
+	webSocketPageTemplates = newPageTemplates("websocket.html")
+	pageTranslationCatalog = mustLoadTranslationCatalog()
 )
 
 var version = "devel"
@@ -61,25 +61,78 @@ type item struct {
 }
 
 type pageData struct {
-	Title     string
-	Version   string
-	Protocols []protocolCard
-	Clients   []webSocketClientView
+	TitleKey         string
+	Version          string
+	Locale           string
+	Texts            map[string]string
+	TranslationsJSON string
+	Languages        []languageOption
+	HomeURL          string
+	WebSocketURL     string
+	Protocols        []protocolCardView
+	ActiveStatus     statusBadgeView
+	Clients          []webSocketClientView
+	Breadcrumbs      []breadcrumb
 }
 
-type protocolCard struct {
+func (data pageData) T(key string) string {
+	if value, ok := data.Texts[key]; ok {
+		return value
+	}
+	return key
+}
+
+type breadcrumb struct {
+	Label   string
+	URL     string
+	Current bool
+}
+
+type languageOption struct {
+	Code    string
+	Label   string
+	URL     string
+	Current bool
+}
+
+type protocolDefinition struct {
+	Index          string
+	ID             string
+	NameKey        string
+	Endpoint       string
+	DescriptionKey string
+	StatusClass    string
+	StatusKey      string
+}
+
+type protocolCardView struct {
 	Index       string
 	ID          string
 	Name        string
 	Endpoint    string
 	Description string
-	Status      string
+	ComingSoon  string
+	StatusBadge statusBadgeView
+}
+
+type statusBadgeView struct {
+	Class string
+	Label string
 }
 
 type webSocketClientView struct {
-	ID       string
-	Label    string
-	Endpoint string
+	ID             string
+	Label          string
+	Endpoint       string
+	Texts          map[string]string
+	DefaultMessage string
+}
+
+func (view webSocketClientView) T(key string) string {
+	if value, ok := view.Texts[key]; ok {
+		return value
+	}
+	return key
 }
 
 type handlerConfig struct {
@@ -89,6 +142,14 @@ type handlerConfig struct {
 type application struct {
 	handler http.Handler
 	hub     *webSocketHub
+}
+
+func newPageTemplates(page string) *template.Template {
+	return template.Must(
+		template.New("base.html").
+			Option("missingkey=error").
+			ParseFS(webFiles, "templates/base.html", "templates/components/*.html", "templates/"+page),
+	)
 }
 
 func main() {
@@ -166,7 +227,14 @@ func newApplication(config handlerConfig) *application {
 
 	webSocketHub := newWebSocketHub()
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", staticIndex)
+	mux.HandleFunc("/", exactGET("/", redirectToLocalized("/")))
+	mux.HandleFunc("/websocket", exactGET("/websocket", redirectToLocalized("/websocket")))
+	for _, currentLocale := range supportedLocales {
+		homePath := localizedPath(currentLocale, "/")
+		webSocketPath := localizedPath(currentLocale, "/websocket")
+		mux.HandleFunc(homePath, exactGET(homePath, localizedIndex(currentLocale)))
+		mux.HandleFunc(webSocketPath, exactGET(webSocketPath, localizedWebSocketIndex(currentLocale)))
+	}
 	mux.HandleFunc("/static/", staticAsset)
 	mux.HandleFunc("/healthz", exactGET("/healthz", writeOK))
 	mux.HandleFunc("/readyz", exactGET("/readyz", writeOK))
@@ -206,31 +274,122 @@ func exactGET(path string, handler http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-func staticIndex(writer http.ResponseWriter, request *http.Request) {
-	if request.URL.Path != "/" {
-		http.NotFound(writer, request)
-		return
+func redirectToLocalized(page string) http.HandlerFunc {
+	return func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Cache-Control", "private, no-store")
+		writer.Header().Add("Vary", "Accept-Language")
+		writer.Header().Add("Vary", "Cookie")
+		http.Redirect(writer, request, localizedPath(pageTranslationCatalog.detect(request), page), http.StatusFound)
 	}
-	if request.Method != http.MethodGet {
-		writer.Header().Set("Allow", http.MethodGet)
-		http.Error(writer, "method not allowed", http.StatusMethodNotAllowed)
-		return
+}
+
+func localizedIndex(currentLocale locale) http.HandlerFunc {
+	return func(writer http.ResponseWriter, _ *http.Request) {
+		data := localizedPageData(currentLocale, "/", pageData{
+			TitleKey:  "console.label",
+			Version:   version,
+			Protocols: localizedProtocolCards(currentLocale),
+			ActiveStatus: statusBadgeView{
+				Class: "active",
+				Label: pageTranslationCatalog.translations(currentLocale)["status.active"],
+			},
+		})
+		renderLocalizedPage(writer, indexPageTemplates, currentLocale, data)
 	}
-	var page bytes.Buffer
-	err := pageTemplates.ExecuteTemplate(&page, "base", pageData{
-		Title:   "Transport Console",
-		Version: version,
-		Protocols: []protocolCard{
-			{Index: "01", ID: "rest", Name: "REST", Endpoint: "/api/*", Description: "HTTP request and response checks", Status: "planned"},
-			{Index: "02", ID: "graphql", Name: "GraphQL", Endpoint: "/graphql", Description: "Query, variables and error checks", Status: "planned"},
-			{Index: "03", ID: "sse", Name: "Server-Sent Events", Endpoint: "/events", Description: "Streaming and reconnect checks", Status: "planned"},
-		},
-		Clients: []webSocketClientView{
-			{ID: "client-a", Label: "Client A", Endpoint: "/ws"},
-			{ID: "client-b", Label: "Client B", Endpoint: "/ws"},
-		},
+}
+
+func localizedWebSocketIndex(currentLocale locale) http.HandlerFunc {
+	return func(writer http.ResponseWriter, _ *http.Request) {
+		texts := pageTranslationCatalog.translations(currentLocale)
+		data := localizedPageData(currentLocale, "/websocket", pageData{
+			TitleKey: "websocket.lab_title",
+			Version:  version,
+			Clients: []webSocketClientView{
+				{ID: "client-a", Label: texts["client.a"], Endpoint: "/ws", Texts: texts, DefaultMessage: strings.ReplaceAll(texts["websocket.default_message"], "{client}", texts["client.a"])},
+				{ID: "client-b", Label: texts["client.b"], Endpoint: "/ws", Texts: texts, DefaultMessage: strings.ReplaceAll(texts["websocket.default_message"], "{client}", texts["client.b"])},
+			},
+			Breadcrumbs: []breadcrumb{
+				{Label: texts["navigation.home"], URL: localizedPath(currentLocale, "/")},
+				{Label: "WebSocket", Current: true},
+			},
+		})
+		renderLocalizedPage(writer, webSocketPageTemplates, currentLocale, data)
+	}
+}
+
+func localizedProtocolCards(currentLocale locale) []protocolCardView {
+	texts := pageTranslationCatalog.translations(currentLocale)
+	definitions := []protocolDefinition{
+		{Index: "01", ID: "rest", NameKey: "protocol.rest.name", Endpoint: "/api/*", DescriptionKey: "protocol.rest.description", StatusClass: "planned", StatusKey: "status.planned"},
+		{Index: "02", ID: "graphql", NameKey: "protocol.graphql.name", Endpoint: "/graphql", DescriptionKey: "protocol.graphql.description", StatusClass: "planned", StatusKey: "status.planned"},
+		{Index: "03", ID: "sse", NameKey: "protocol.sse.name", Endpoint: "/events", DescriptionKey: "protocol.sse.description", StatusClass: "planned", StatusKey: "status.planned"},
+	}
+	cards := make([]protocolCardView, 0, len(definitions))
+	for _, definition := range definitions {
+		cards = append(cards, protocolCardView{
+			Index:       definition.Index,
+			ID:          definition.ID,
+			Name:        texts[definition.NameKey],
+			Endpoint:    definition.Endpoint,
+			Description: texts[definition.DescriptionKey],
+			ComingSoon:  texts["home.coming_soon"],
+			StatusBadge: statusBadgeView{Class: definition.StatusClass, Label: texts[definition.StatusKey]},
+		})
+	}
+	return cards
+}
+
+func localizedPageData(currentLocale locale, page string, data pageData) pageData {
+	data.Locale = string(currentLocale)
+	data.Texts = pageTranslationCatalog.translations(currentLocale)
+	data.TranslationsJSON = pageTranslationCatalog.translationsJSON(currentLocale)
+	data.Languages = languageOptions(currentLocale, page)
+	data.HomeURL = localizedPath(currentLocale, "/")
+	data.WebSocketURL = localizedPath(currentLocale, "/websocket")
+	return data
+}
+
+func languageOptions(currentLocale locale, page string) []languageOption {
+	texts := pageTranslationCatalog.translations(currentLocale)
+	labels := map[locale]string{
+		localeEN:   texts["language.en"],
+		localePtBR: texts["language.pt_br"],
+		localeEsAR: texts["language.es_ar"],
+	}
+	options := make([]languageOption, 0, len(supportedLocales))
+	for _, optionLocale := range supportedLocales {
+		options = append(options, languageOption{
+			Code:    string(optionLocale),
+			Label:   labels[optionLocale],
+			URL:     localizedPath(optionLocale, page),
+			Current: optionLocale == currentLocale,
+		})
+	}
+	return options
+}
+
+func localizedPath(currentLocale locale, page string) string {
+	if page == "/" {
+		return "/" + string(currentLocale) + "/"
+	}
+	return "/" + string(currentLocale) + page
+}
+
+func renderLocalizedPage(writer http.ResponseWriter, templates *template.Template, currentLocale locale, data pageData) {
+	writer.Header().Set("Content-Language", string(currentLocale))
+	http.SetCookie(writer, &http.Cookie{
+		Name:     "testkit_locale",
+		Value:    string(currentLocale),
+		Path:     "/",
+		MaxAge:   365 * 24 * 60 * 60,
+		SameSite: http.SameSiteLaxMode,
 	})
-	if err != nil {
+	renderPage(writer, templates, data)
+}
+
+func renderPage(writer http.ResponseWriter, templates *template.Template, data pageData) {
+	var page bytes.Buffer
+	if err := templates.ExecuteTemplate(&page, "base", data); err != nil {
 		log.Printf("render dashboard: %v", err)
 		http.Error(writer, "static page unavailable", http.StatusInternalServerError)
 		return

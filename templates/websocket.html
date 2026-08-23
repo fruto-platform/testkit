@@ -1,0 +1,38 @@
+{{ define "content" -}}
+<main id="main-content" class="page-content page-content--websocket">
+  {{ template "breadcrumbs" . }}
+
+  <section class="hero hero--compact" aria-labelledby="page-title">
+    <div class="hero-copy">
+      <p class="eyebrow accent-text">{{ .T "websocket.eyebrow" }}</p>
+      <h1 id="page-title">{{ .T "websocket.title" }} <em>{{ .T "websocket.title_emphasis" }}</em></h1>
+      <p class="hero-lede">{{ .T "websocket.lede" }}</p>
+    </div>
+    <a class="button button--secondary hero-back" href="{{ .HomeURL }}">{{ .T "websocket.back" }}</a>
+  </section>
+
+  <section class="lab-section lab-section--first" aria-labelledby="websocket-title">
+    <div class="section-heading section-heading--lab">
+      <div>
+        <p class="eyebrow">{{ .T "websocket.live_transport" }}</p>
+        <h2 id="websocket-title">{{ .T "websocket.two_clients" }}</h2>
+        <p class="section-description">{{ .T "websocket.description" }}</p>
+      </div>
+      <div class="lab-contract">
+        <span>{{ .T "websocket.contract" }}</span>
+        <code>/ws</code>
+      </div>
+    </div>
+
+    <div class="client-grid">
+      {{ range .Clients }}{{ template "websocket-client" . }}{{ end }}
+    </div>
+  </section>
+
+  <footer class="page-footer">
+    <span>{{ .T "footer.name" }}</span>
+    <span class="footer-separator" aria-hidden="true">/</span>
+    <span>{{ .T "footer.fixture" }}</span>
+  </footer>
+</main>
+{{- end }}

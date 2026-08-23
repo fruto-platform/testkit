@@ -1,0 +1,15 @@
+{{ define "breadcrumbs" -}}
+<nav class="breadcrumbs" aria-label="{{ .T "navigation.breadcrumbs" }}">
+  <ol>
+    {{ range .Breadcrumbs }}
+    <li>
+      {{ if .Current }}
+      <span aria-current="page">{{ .Label }}</span>
+      {{ else }}
+      <a href="{{ .URL }}">{{ .Label }}</a>
+      {{ end }}
+    </li>
+    {{ end }}
+  </ol>
+</nav>
+{{- end }}

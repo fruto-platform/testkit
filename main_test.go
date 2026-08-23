@@ -21,14 +21,22 @@ func TestHandlerRoutes(t *testing.T) {
 		path       string
 		statusCode int
 	}{
-		{name: "root", method: http.MethodGet, path: "/", statusCode: http.StatusOK},
+		{name: "root redirects", method: http.MethodGet, path: "/", statusCode: http.StatusFound},
+		{name: "websocket page redirects", method: http.MethodGet, path: "/websocket", statusCode: http.StatusFound},
+		{name: "english home", method: http.MethodGet, path: "/en/", statusCode: http.StatusOK},
+		{name: "english websocket page", method: http.MethodGet, path: "/en/websocket", statusCode: http.StatusOK},
+		{name: "portuguese home", method: http.MethodGet, path: "/pt-BR/", statusCode: http.StatusOK},
+		{name: "spanish websocket page", method: http.MethodGet, path: "/es-AR/websocket", statusCode: http.StatusOK},
 		{name: "liveness", method: http.MethodGet, path: "/healthz", statusCode: http.StatusOK},
 		{name: "readiness", method: http.MethodGet, path: "/readyz", statusCode: http.StatusOK},
 		{name: "not ready", method: http.MethodGet, path: "/not-ready", statusCode: http.StatusServiceUnavailable},
 		{name: "rest status", method: http.MethodGet, path: "/api/status", statusCode: http.StatusOK},
 		{name: "rest items", method: http.MethodGet, path: "/api/items", statusCode: http.StatusOK},
 		{name: "unknown", method: http.MethodGet, path: "/unknown", statusCode: http.StatusNotFound},
+		{name: "unknown locale", method: http.MethodGet, path: "/fr/", statusCode: http.StatusNotFound},
 		{name: "method not allowed", method: http.MethodPost, path: "/readyz", statusCode: http.StatusMethodNotAllowed},
+		{name: "websocket page method not allowed", method: http.MethodPost, path: "/websocket", statusCode: http.StatusMethodNotAllowed},
+		{name: "localized page method not allowed", method: http.MethodPost, path: "/pt-BR/", statusCode: http.StatusMethodNotAllowed},
 	}
 
 	for _, test := range tests {
@@ -74,7 +82,7 @@ func TestStaticAssets(t *testing.T) {
 }
 
 func TestDashboardRendersWebSocketConsole(t *testing.T) {
-	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	request := httptest.NewRequest(http.MethodGet, "/en/", nil)
 	responseRecorder := httptest.NewRecorder()
 
 	newHandler().ServeHTTP(responseRecorder, request)
@@ -86,20 +94,150 @@ func TestDashboardRendersWebSocketConsole(t *testing.T) {
 		t.Fatalf("Content-Type = %q, want text/html; charset=utf-8", got)
 	}
 	for _, want := range []string{
+		`<html lang="en">`,
 		"Transport console",
 		"build devel",
-		"WebSocket lab",
-		"data-ws-client",
-		"Client A",
-		"Client B",
+		"Open lab",
+		"/en/websocket",
+		`data-locale="en"`,
 		"/static/app.js",
 	} {
 		if !strings.Contains(responseRecorder.Body.String(), want) {
 			t.Fatalf("dashboard does not contain %q", want)
 		}
 	}
+	if got := strings.Count(responseRecorder.Body.String(), "data-ws-client"); got != 0 {
+		t.Fatalf("home contains %d WebSocket clients, want 0", got)
+	}
+}
+
+func TestWebSocketPageRendersBreadcrumbsAndConsole(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "/en/websocket", nil)
+	responseRecorder := httptest.NewRecorder()
+
+	newHandler().ServeHTTP(responseRecorder, request)
+
+	if responseRecorder.Code != http.StatusOK {
+		t.Fatalf("status code = %d, want %d", responseRecorder.Code, http.StatusOK)
+	}
+	for _, want := range []string{
+		"WebSocket",
+		"lab.",
+		"aria-label=\"Breadcrumb\"",
+		"aria-current=\"page\">WebSocket",
+		"href=\"/en/\">Home",
+		"Back to surface map",
+		"build devel",
+		"Client A",
+		"Client B",
+		"/static/app.js",
+	} {
+		if !strings.Contains(responseRecorder.Body.String(), want) {
+			t.Fatalf("WebSocket page does not contain %q", want)
+		}
+	}
 	if got := strings.Count(responseRecorder.Body.String(), "data-ws-client"); got != 2 {
-		t.Fatalf("dashboard contains %d WebSocket clients, want 2", got)
+		t.Fatalf("WebSocket page contains %d clients, want 2", got)
+	}
+}
+
+func TestLocaleAliasRedirectsByPreference(t *testing.T) {
+	tests := []struct {
+		name           string
+		path           string
+		acceptLanguage string
+		cookie         string
+		query          string
+		location       string
+	}{
+		{name: "accept language", path: "/", acceptLanguage: "pt-BR, en;q=0.8", location: "/pt-BR/"},
+		{name: "cookie wins over header", path: "/websocket", acceptLanguage: "en", cookie: "es-AR", location: "/es-AR/websocket"},
+		{name: "query wins over cookie", path: "/", acceptLanguage: "en", cookie: "pt-BR", query: "?lang=es-AR", location: "/es-AR/"},
+		{name: "fallback", path: "/", acceptLanguage: "de-DE", location: "/en/"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, test.path+test.query, nil)
+			request.Header.Set("Accept-Language", test.acceptLanguage)
+			if test.cookie != "" {
+				request.AddCookie(&http.Cookie{Name: "testkit_locale", Value: test.cookie})
+			}
+			responseRecorder := httptest.NewRecorder()
+
+			newHandler().ServeHTTP(responseRecorder, request)
+
+			if responseRecorder.Code != http.StatusFound {
+				t.Fatalf("status code = %d, want %d", responseRecorder.Code, http.StatusFound)
+			}
+			if got := responseRecorder.Header().Get("Location"); got != test.location {
+				t.Fatalf("Location = %q, want %q", got, test.location)
+			}
+			if got := responseRecorder.Header().Values("Vary"); len(got) != 2 {
+				t.Fatalf("Vary = %q, want Accept-Language and Cookie", got)
+			}
+		})
+	}
+}
+
+func TestLocalizedPagesExposeLocaleAndLanguageLinks(t *testing.T) {
+	tests := []struct {
+		path       string
+		locale     string
+		content    string
+		otherRoute string
+		breadcrumb string
+	}{
+		{path: "/pt-BR/", locale: "pt-BR", content: "Console de transporte", otherRoute: "/pt-BR/websocket"},
+		{path: "/es-AR/websocket", locale: "es-AR", content: "Laboratorio WebSocket", otherRoute: "/es-AR/", breadcrumb: "Ruta de navegación"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.locale, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, test.path, nil)
+			responseRecorder := httptest.NewRecorder()
+
+			newHandler().ServeHTTP(responseRecorder, request)
+
+			body := responseRecorder.Body.String()
+			if responseRecorder.Code != http.StatusOK {
+				t.Fatalf("status code = %d, want %d", responseRecorder.Code, http.StatusOK)
+			}
+			if responseRecorder.Header().Get("Content-Language") != test.locale {
+				t.Fatalf("Content-Language = %q, want %q", responseRecorder.Header().Get("Content-Language"), test.locale)
+			}
+			for _, want := range []string{
+				`<html lang="` + test.locale + `">`,
+				test.content,
+				`data-locale="` + test.locale + `"`,
+				test.otherRoute,
+			} {
+				if !strings.Contains(body, want) {
+					t.Fatalf("response does not contain %q", want)
+				}
+			}
+			if test.breadcrumb != "" && !strings.Contains(body, `aria-label="`+test.breadcrumb+`"`) {
+				t.Fatalf("localized breadcrumb label %q not found", test.breadcrumb)
+			}
+			if cookie := responseRecorder.Header().Get("Set-Cookie"); !strings.Contains(cookie, "testkit_locale="+test.locale) {
+				t.Fatalf("Set-Cookie = %q, want locale cookie", cookie)
+			}
+		})
+	}
+}
+
+func TestTranslationCatalogsHaveSameKeys(t *testing.T) {
+	english := pageTranslationCatalog.values[localeEN]
+	for _, currentLocale := range supportedLocales {
+		translations := pageTranslationCatalog.values[currentLocale]
+		if len(translations) != len(english) {
+			t.Fatalf("locale %s has %d keys, English has %d", currentLocale, len(translations), len(english))
+		}
+		for key := range english {
+			if _, ok := translations[key]; !ok {
+				t.Fatalf("locale %s is missing key %q", currentLocale, key)
+			}
+		}
 	}
 }
 

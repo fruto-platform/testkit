@@ -19,7 +19,9 @@ saída; diagnósticos de rede exigem um comando explícito do contêiner.
 
 | Capacidade | Interface |
 | --- | --- |
-| Página estática | `GET /` |
+| Alias de detecção de idioma | `GET /`, `GET /websocket` |
+| Páginas localizadas | `GET /en/`, `GET /pt-BR/`, `GET /es-AR/` |
+| Console WebSocket localizado | `GET /en/websocket`, `GET /pt-BR/websocket`, `GET /es-AR/websocket` |
 | Asset estático | `GET /static/style.css` |
 | Liveness | `GET /healthz` |
 | Readiness | `GET /readyz` |
@@ -79,11 +81,14 @@ Resposta esperada:
 
 ## Console no navegador
 
-Abra `http://localhost:8080/` para usar o dashboard embutido. O laboratório de
-WebSocket mostra dois clientes independentes da mesma origem, `Client A` e
-`Client B`, permitindo conectar os dois painéis, enviar uma mensagem por um
-deles e observar o broadcast nos dois logs. As conexões são explícitas: a
-interface não reconecta automaticamente após erro ou encerramento.
+Abra `http://localhost:8080/` para detectar o idioma do navegador ou use
+diretamente `/en/`, `/pt-BR/` ou `/es-AR/`. O laboratório WebSocket fica no
+caminho `/websocket` correspondente. Ele mostra dois
+clientes independentes da mesma origem, `Client A` e `Client B`, permitindo
+conectar os dois painéis, enviar uma mensagem por um deles e alternar entre os
+eventos JSON brutos e uma visão de chat com horários locais de envio e
+recebimento. As conexões são explícitas: a interface não reconecta
+automaticamente após erro ou encerramento.
 
 ## Exemplos de protocolos
 

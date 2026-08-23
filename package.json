@@ -2,6 +2,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test:frontend": "node --test frontend-tests/ws-client.test.mjs frontend-tests/ws-ui.test.mjs"
+    "test:frontend": "node --test frontend-tests/i18n.test.mjs frontend-tests/ws-client.test.mjs frontend-tests/ws-ui.test.mjs"
   }
 }
