@@ -4,7 +4,7 @@
 [Español (Argentina)](docs/es-AR/CONTRIBUTING.md)
 
 Thank you for helping improve Fruto Testkit. The project is experimental and has
-no published release, so changes should remain small, reproducible, and directly
+published pre-releases, so changes should remain small, reproducible, and directly
 connected to a testing need.
 
 ## Before starting

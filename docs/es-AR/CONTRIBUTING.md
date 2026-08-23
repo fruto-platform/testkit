@@ -3,8 +3,8 @@
 [English](../../CONTRIBUTING.md) |
 [Português (Brasil)](../pt-BR/CONTRIBUTING.md)
 
-Gracias por ayudar a mejorar Fruto Testkit. El proyecto es experimental y no
-tiene una release publicada, por lo que los cambios deben ser pequeños,
+Gracias por ayudar a mejorar Fruto Testkit. El proyecto es experimental y tiene
+releases de pre-lanzamiento, por lo que los cambios deben ser pequeños,
 reproducibles y directamente relacionados con una necesidad de prueba.
 
 ## Antes de comenzar
