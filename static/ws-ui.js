@@ -56,6 +56,7 @@ export function mountWebSocketClient(root, { locale = "en", translate = (key) =>
   const tabs = [...root.querySelectorAll("[data-ws-tab]")];
   const panels = [...root.querySelectorAll("[data-ws-panel]")];
   const relativeTimes = [];
+  const chatHistory = [];
   const client = createWebSocketClient({
     url: root.dataset.wsUrl,
     onStateChange: ({ state, detail }) => updateState(state, detail),
@@ -111,8 +112,7 @@ export function mountWebSocketClient(root, { locale = "en", translate = (key) =>
     log.scrollTop = log.scrollHeight;
   }
 
-  function appendChatMessage(event, direction) {
-    emptyChat.hidden = true;
+  function createChatMessage(event, direction) {
     const entry = document.createElement("article");
     entry.className = `chat-message chat-message--${direction}`;
 
@@ -132,18 +132,29 @@ export function mountWebSocketClient(root, { locale = "en", translate = (key) =>
     message.className = "chat-message__body";
     message.textContent = messageFromPayload(event.detail);
     entry.append(meta, message);
-    chat.append(entry);
 
-    while (chat.children.length > MAX_LOG_ENTRIES + 1) {
-      const removed = chat.children[1];
-      const removedTime = removed.querySelector("time");
-      if (removedTime) {
-        const index = relativeTimes.indexOf(removedTime);
-        if (index >= 0) relativeTimes.splice(index, 1);
-      }
-      chat.removeChild(removed);
+    return entry;
+  }
+
+  function renderChatHistory() {
+    relativeTimes.length = 0;
+    const messages = chatHistory.slice(-MAX_LOG_ENTRIES);
+    if (messages.length === 0) {
+      emptyChat.hidden = false;
+      chat.replaceChildren(emptyChat);
+    } else {
+      emptyChat.hidden = true;
+      chat.replaceChildren(...messages.map(({ event, direction }) => createChatMessage(event, direction)));
     }
     chat.scrollTop = chat.scrollHeight;
+  }
+
+  function recordChatMessage(event, direction) {
+    chatHistory.push({ event, direction });
+    if (chatHistory.length > MAX_LOG_ENTRIES) {
+      chatHistory.splice(0, chatHistory.length - MAX_LOG_ENTRIES);
+    }
+    renderChatHistory();
   }
 
   function updateRelativeTimes(now = new Date()) {
@@ -157,12 +168,12 @@ export function mountWebSocketClient(root, { locale = "en", translate = (key) =>
     appendEvent(event);
 
     if (event.type === "message.sent") {
-      appendChatMessage(event, "sent");
+      recordChatMessage(event, "sent");
       return;
     }
 
     if (event.type === "broadcast.received") {
-      appendChatMessage(event, "received");
+      recordChatMessage(event, "received");
     }
   }
 
@@ -176,6 +187,7 @@ export function mountWebSocketClient(root, { locale = "en", translate = (key) =>
     for (const panel of panels) {
       panel.hidden = panel.dataset.wsPanel !== view;
     }
+    if (view === "chat") renderChatHistory();
   }
 
   function moveTab(event) {

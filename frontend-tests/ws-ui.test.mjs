@@ -32,6 +32,10 @@ class FakeElement {
     this.children.push(...children);
   }
 
+  replaceChildren(...children) {
+    this.children = children;
+  }
+
   querySelector(selector) {
     return this.controls.get(selector);
   }
@@ -255,6 +259,31 @@ test("separates sent and received chat messages and switches views", () => {
   jsonTab.dispatch("click");
   assert.equal(panels[0].hidden, false);
   assert.equal(panels[1].hidden, true);
+});
+
+test("rebuilds chat history when switching from JSON after the chat view is remounted", () => {
+  const root = createUI();
+  const connectButton = root.controls.get("[data-ws-connect]");
+  const messageInput = root.controls.get("[data-ws-message]");
+  const form = root.controls.get("[data-ws-form]");
+  const chat = root.controls.get("[data-ws-chat]");
+  const chatTab = root.collections.get("[data-ws-tab]")[1];
+
+  connectButton.dispatch("click");
+  const socket = FakeWebSocket.current;
+  socket.emit("open");
+  messageInput.value = "history survives";
+  form.dispatch("submit");
+  socket.emit("message", { data: JSON.stringify({ message: "history survives", version: "dev" }) });
+
+  chat.replaceChildren();
+  chatTab.dispatch("click");
+
+  assert.equal(chat.children.length, 2);
+  assert.equal(chat.children[0].className, "chat-message chat-message--sent");
+  assert.equal(chat.children[0].children.at(-1).textContent, "history survives");
+  assert.equal(chat.children[1].className, "chat-message chat-message--received");
+  assert.equal(chat.children[1].children.at(-1).textContent, "history survives");
 });
 
 test("formats relative timestamps in English", () => {
