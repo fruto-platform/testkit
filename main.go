@@ -43,6 +43,9 @@ var webFiles embed.FS
 var (
 	indexPageTemplates     = newPageTemplates("index.html")
 	webSocketPageTemplates = newPageTemplates("websocket.html")
+	restPageTemplates      = newPageTemplates("rest.html")
+	graphqlPageTemplates   = newPageTemplates("graphql-lab.html")
+	ssePageTemplates       = newPageTemplates("sse.html")
 	pageTranslationCatalog = mustLoadTranslationCatalog()
 )
 
@@ -68,9 +71,8 @@ type pageData struct {
 	TranslationsJSON string
 	Languages        []languageOption
 	HomeURL          string
-	WebSocketURL     string
+	LabEndpoint      string
 	Protocols        []protocolCardView
-	ActiveStatus     statusBadgeView
 	Clients          []webSocketClientView
 	Breadcrumbs      []breadcrumb
 }
@@ -101,6 +103,7 @@ type protocolDefinition struct {
 	NameKey        string
 	Endpoint       string
 	DescriptionKey string
+	URL            string
 	StatusClass    string
 	StatusKey      string
 }
@@ -111,6 +114,9 @@ type protocolCardView struct {
 	Name        string
 	Endpoint    string
 	Description string
+	URL         string
+	Active      bool
+	OpenLab     string
 	ComingSoon  string
 	StatusBadge statusBadgeView
 }
@@ -229,11 +235,20 @@ func newApplication(config handlerConfig) *application {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", exactGET("/", redirectToLocalized("/")))
 	mux.HandleFunc("/websocket", exactGET("/websocket", redirectToLocalized("/websocket")))
+	mux.HandleFunc("/rest", exactGET("/rest", redirectToLocalized("/rest")))
+	mux.HandleFunc("/graphql-lab", exactGET("/graphql-lab", redirectToLocalized("/graphql-lab")))
+	mux.HandleFunc("/sse", exactGET("/sse", redirectToLocalized("/sse")))
 	for _, currentLocale := range supportedLocales {
 		homePath := localizedPath(currentLocale, "/")
 		webSocketPath := localizedPath(currentLocale, "/websocket")
+		restPath := localizedPath(currentLocale, "/rest")
+		graphqlPath := localizedPath(currentLocale, "/graphql-lab")
+		ssePath := localizedPath(currentLocale, "/sse")
 		mux.HandleFunc(homePath, exactGET(homePath, localizedIndex(currentLocale)))
 		mux.HandleFunc(webSocketPath, exactGET(webSocketPath, localizedWebSocketIndex(currentLocale)))
+		mux.HandleFunc(restPath, exactGET(restPath, localizedRESTIndex(currentLocale)))
+		mux.HandleFunc(graphqlPath, exactGET(graphqlPath, localizedGraphQLIndex(currentLocale)))
+		mux.HandleFunc(ssePath, exactGET(ssePath, localizedSSEIndex(currentLocale)))
 	}
 	mux.HandleFunc("/static/", staticAsset)
 	mux.HandleFunc("/healthz", exactGET("/healthz", writeOK))
@@ -289,12 +304,36 @@ func localizedIndex(currentLocale locale) http.HandlerFunc {
 			TitleKey:  "console.label",
 			Version:   version,
 			Protocols: localizedProtocolCards(currentLocale),
-			ActiveStatus: statusBadgeView{
-				Class: "active",
-				Label: pageTranslationCatalog.translations(currentLocale)["status.active"],
-			},
 		})
 		renderLocalizedPage(writer, indexPageTemplates, currentLocale, data)
+	}
+}
+
+func localizedRESTIndex(currentLocale locale) http.HandlerFunc {
+	return localizedLabIndex(currentLocale, "/rest", "rest.lab_title", "/api/*", "protocol.rest.name", restPageTemplates)
+}
+
+func localizedGraphQLIndex(currentLocale locale) http.HandlerFunc {
+	return localizedLabIndex(currentLocale, "/graphql-lab", "graphql.lab_title", "/graphql", "protocol.graphql.name", graphqlPageTemplates)
+}
+
+func localizedSSEIndex(currentLocale locale) http.HandlerFunc {
+	return localizedLabIndex(currentLocale, "/sse", "sse.lab_title", "/events", "protocol.sse.name", ssePageTemplates)
+}
+
+func localizedLabIndex(currentLocale locale, page, titleKey, endpoint, nameKey string, templates *template.Template) http.HandlerFunc {
+	return func(writer http.ResponseWriter, _ *http.Request) {
+		texts := pageTranslationCatalog.translations(currentLocale)
+		data := localizedPageData(currentLocale, page, pageData{
+			TitleKey:    titleKey,
+			Version:     version,
+			LabEndpoint: endpoint,
+			Breadcrumbs: []breadcrumb{
+				{Label: texts["navigation.home"], URL: localizedPath(currentLocale, "/")},
+				{Label: texts[nameKey], Current: true},
+			},
+		})
+		renderLocalizedPage(writer, templates, currentLocale, data)
 	}
 }
 
@@ -320,9 +359,10 @@ func localizedWebSocketIndex(currentLocale locale) http.HandlerFunc {
 func localizedProtocolCards(currentLocale locale) []protocolCardView {
 	texts := pageTranslationCatalog.translations(currentLocale)
 	definitions := []protocolDefinition{
-		{Index: "01", ID: "rest", NameKey: "protocol.rest.name", Endpoint: "/api/*", DescriptionKey: "protocol.rest.description", StatusClass: "planned", StatusKey: "status.planned"},
-		{Index: "02", ID: "graphql", NameKey: "protocol.graphql.name", Endpoint: "/graphql", DescriptionKey: "protocol.graphql.description", StatusClass: "planned", StatusKey: "status.planned"},
-		{Index: "03", ID: "sse", NameKey: "protocol.sse.name", Endpoint: "/events", DescriptionKey: "protocol.sse.description", StatusClass: "planned", StatusKey: "status.planned"},
+		{Index: "01", ID: "rest", NameKey: "protocol.rest.name", Endpoint: "/api/*", DescriptionKey: "protocol.rest.description", URL: localizedPath(currentLocale, "/rest"), StatusClass: "active", StatusKey: "status.active"},
+		{Index: "02", ID: "graphql", NameKey: "protocol.graphql.name", Endpoint: "/graphql", DescriptionKey: "protocol.graphql.description", URL: localizedPath(currentLocale, "/graphql-lab"), StatusClass: "active", StatusKey: "status.active"},
+		{Index: "03", ID: "sse", NameKey: "protocol.sse.name", Endpoint: "/events", DescriptionKey: "protocol.sse.description", URL: localizedPath(currentLocale, "/sse"), StatusClass: "active", StatusKey: "status.active"},
+		{Index: "04", ID: "websocket", NameKey: "home.websocket_name", Endpoint: "/ws", DescriptionKey: "home.websocket_description", URL: localizedPath(currentLocale, "/websocket"), StatusClass: "active", StatusKey: "status.active"},
 	}
 	cards := make([]protocolCardView, 0, len(definitions))
 	for _, definition := range definitions {
@@ -332,6 +372,9 @@ func localizedProtocolCards(currentLocale locale) []protocolCardView {
 			Name:        texts[definition.NameKey],
 			Endpoint:    definition.Endpoint,
 			Description: texts[definition.DescriptionKey],
+			URL:         definition.URL,
+			Active:      definition.StatusClass == "active",
+			OpenLab:     texts["home.open_lab"],
 			ComingSoon:  texts["home.coming_soon"],
 			StatusBadge: statusBadgeView{Class: definition.StatusClass, Label: texts[definition.StatusKey]},
 		})
@@ -345,7 +388,6 @@ func localizedPageData(currentLocale locale, page string, data pageData) pageDat
 	data.TranslationsJSON = pageTranslationCatalog.translationsJSON(currentLocale)
 	data.Languages = languageOptions(currentLocale, page)
 	data.HomeURL = localizedPath(currentLocale, "/")
-	data.WebSocketURL = localizedPath(currentLocale, "/websocket")
 	return data
 }
 

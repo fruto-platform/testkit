@@ -19,9 +19,9 @@ network diagnostics require an explicit container command.
 
 | Capability | Interface |
 | --- | --- |
-| Language detection aliases | `GET /`, `GET /websocket` |
+| Language detection aliases | `GET /`, `GET /websocket`, `GET /rest`, `GET /graphql-lab`, `GET /sse` |
 | Localized browser pages | `GET /en/`, `GET /pt-BR/`, `GET /es-AR/` |
-| Localized WebSocket console | `GET /en/websocket`, `GET /pt-BR/websocket`, `GET /es-AR/websocket` |
+| Localized browser labs | `GET /en/rest`, `/en/graphql-lab`, `/en/sse`, `/en/websocket` and matching translated paths |
 | Static asset | `GET /static/style.css` |
 | Liveness | `GET /healthz` |
 | Readiness | `GET /readyz` |
@@ -82,12 +82,15 @@ Expected response:
 ## Browser console
 
 Open `http://localhost:8080/` to let the server detect the browser language, or
-use a localized URL directly: `/en/`, `/pt-BR/` or `/es-AR/`. The WebSocket lab
-is available at the matching `/websocket` path. It shows two independent
+use a localized URL directly: `/en/`, `/pt-BR/` or `/es-AR/`. The browser labs
+are available at the matching `/rest`, `/graphql-lab`, `/sse` and `/websocket`
+paths. REST and GraphQL use guided presets that render request and response
+details. The SSE lab displays event IDs, names and data, with explicit connect,
+disconnect and reconnect actions. The WebSocket lab shows two independent
 same-origin clients, `Client A` and `Client B`, so you can connect both panels,
 send a message from either one, and switch between raw JSON events and a chat
-view with local send/receive timestamps. Connections are explicit: the
-interface does not reconnect automatically after an error or close.
+view with local send/receive timestamps. Browser clients do not reconnect
+automatically after an error or close.
 
 ## Protocol examples
 

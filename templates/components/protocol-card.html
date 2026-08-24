@@ -1,5 +1,5 @@
 {{ define "protocol-card" -}}
-<article id="{{ .ID }}-card" class="protocol-card protocol-card--planned">
+<article id="{{ .ID }}-card" class="protocol-card protocol-card--{{ .StatusBadge.Class }}">
   <div class="protocol-card__topline">
     <span class="protocol-index">{{ .Index }}</span>
     {{ template "status-badge" .StatusBadge }}
@@ -7,6 +7,10 @@
   <h3>{{ .Name }}</h3>
   <code>{{ .Endpoint }}</code>
   <p>{{ .Description }}</p>
+  {{ if .Active }}
+  <a class="protocol-card__link" href="{{ .URL }}">{{ .OpenLab }} <span aria-hidden="true">↗</span></a>
+  {{ else }}
   <span class="protocol-card__link protocol-card__link--muted">{{ .ComingSoon }} <span aria-hidden="true">↗</span></span>
+  {{ end }}
 </article>
 {{- end }}

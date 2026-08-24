@@ -1,0 +1,70 @@
+{{ define "content" -}}
+<main id="main-content" class="page-content page-content--lab" data-lab="graphql">
+  {{ template "breadcrumbs" . }}
+
+  <section class="hero hero--compact" aria-labelledby="page-title">
+    <div class="hero-copy">
+      <p class="eyebrow accent-text">{{ .T "graphql.eyebrow" }}</p>
+      <h1 id="page-title">{{ .T "graphql.title" }} <em>{{ .T "graphql.title_emphasis" }}</em></h1>
+      <p class="hero-lede">{{ .T "graphql.lede" }}</p>
+    </div>
+    <a class="button button--secondary hero-back" href="{{ .HomeURL }}">{{ .T "lab.back" }}</a>
+  </section>
+
+  <section class="lab-section lab-section--first" aria-labelledby="graphql-lab-title" data-graphql-lab>
+    <div class="section-heading section-heading--lab">
+      <div>
+        <p class="eyebrow">{{ .T "graphql.surface" }}</p>
+        <h2 id="graphql-lab-title">{{ .T "graphql.presets_title" }}</h2>
+        <p class="section-description">{{ .T "graphql.description" }}</p>
+      </div>
+      <div class="lab-contract">
+        <span>{{ .T "lab.contract" }}</span>
+        <code>{{ .LabEndpoint }}</code>
+      </div>
+    </div>
+
+    <div class="lab-layout">
+      <aside class="preset-panel" aria-label="{{ .T "graphql.presets_title" }}">
+        <p class="preset-panel__label">{{ .T "lab.scenarios" }}</p>
+        <div class="preset-list">
+          <button class="preset-button preset-button--active" type="button" data-graphql-preset="status">{{ .T "graphql.preset_status" }}</button>
+          <button class="preset-button" type="button" data-graphql-preset="echo">{{ .T "graphql.preset_echo" }}</button>
+          <button class="preset-button" type="button" data-graphql-preset="invalid">{{ .T "graphql.preset_invalid" }}</button>
+        </div>
+        <p class="field-hint" data-graphql-hint>{{ .T "graphql.hint" }}</p>
+      </aside>
+
+      <article class="lab-output" aria-live="polite">
+        <header class="lab-output__header">
+          <div>
+            <p class="preset-panel__label">{{ .T "lab.request" }}</p>
+            <code data-graphql-request-line>POST /graphql</code>
+          </div>
+          <span class="lab-result-status" data-graphql-status>{{ .T "lab.waiting" }}</span>
+        </header>
+        <div class="lab-output__grid">
+          <section class="code-panel">
+            <h3>{{ .T "graphql.query" }}</h3>
+            <pre data-graphql-request>{"query":"{ status version }"}</pre>
+          </section>
+          <section class="code-panel">
+            <h3>{{ .T "lab.response" }}</h3>
+            <pre data-graphql-response>{{ .T "lab.run_to_see" }}</pre>
+          </section>
+        </div>
+        <footer class="lab-output__footer">
+          <span>{{ .T "lab.duration" }} <strong data-graphql-duration>—</strong></span>
+          <span>{{ .T "lab.content_type" }} <strong data-graphql-content-type>—</strong></span>
+        </footer>
+      </article>
+    </div>
+  </section>
+
+  <footer class="page-footer">
+    <span>{{ .T "footer.name" }}</span>
+    <span class="footer-separator" aria-hidden="true">/</span>
+    <span>{{ .T "footer.fixture" }}</span>
+  </footer>
+</main>
+{{- end }}

@@ -57,6 +57,8 @@ export function mountWebSocketClient(root, { locale = "en", translate = (key) =>
   const panels = [...root.querySelectorAll("[data-ws-panel]")];
   const relativeTimes = [];
   const chatHistory = [];
+  let nextChatMessageID = 1;
+  let activeView = "json";
   const client = createWebSocketClient({
     url: root.dataset.wsUrl,
     onStateChange: ({ state, detail }) => updateState(state, detail),
@@ -112,9 +114,10 @@ export function mountWebSocketClient(root, { locale = "en", translate = (key) =>
     log.scrollTop = log.scrollHeight;
   }
 
-  function createChatMessage(event, direction) {
+  function createChatMessage({ id, event, direction }) {
     const entry = document.createElement("article");
     entry.className = `chat-message chat-message--${direction}`;
+    entry.dataset.wsHistoryId = String(id);
 
     const meta = document.createElement("div");
     meta.className = "chat-message__meta";
@@ -136,6 +139,27 @@ export function mountWebSocketClient(root, { locale = "en", translate = (key) =>
     return entry;
   }
 
+  function appendChatMessage(message) {
+    emptyChat.hidden = true;
+    if ([...chat.children].includes(emptyChat)) {
+      chat.removeChild(emptyChat);
+    }
+
+    const entry = createChatMessage(message);
+    chat.append(entry);
+
+    while (chat.children.length > MAX_LOG_ENTRIES) {
+      const removed = chat.children[0];
+      const removedTime = removed.querySelector("time");
+      if (removedTime) {
+        const index = relativeTimes.indexOf(removedTime);
+        if (index >= 0) relativeTimes.splice(index, 1);
+      }
+      chat.removeChild(removed);
+    }
+    chat.scrollTop = chat.scrollHeight;
+  }
+
   function renderChatHistory() {
     relativeTimes.length = 0;
     const messages = chatHistory.slice(-MAX_LOG_ENTRIES);
@@ -144,17 +168,28 @@ export function mountWebSocketClient(root, { locale = "en", translate = (key) =>
       chat.replaceChildren(emptyChat);
     } else {
       emptyChat.hidden = true;
-      chat.replaceChildren(...messages.map(({ event, direction }) => createChatMessage(event, direction)));
+      chat.replaceChildren(...messages.map((message) => createChatMessage(message)));
     }
     chat.scrollTop = chat.scrollHeight;
   }
 
+  function chatNeedsRender() {
+    const messages = chatHistory.slice(-MAX_LOG_ENTRIES);
+    const children = [...chat.children];
+    if (messages.length === 0) return children.length !== 1 || children[0] !== emptyChat;
+    if (children.length !== messages.length) return true;
+
+    return children.some((child, index) => child.dataset.wsHistoryId !== String(messages[index].id));
+  }
+
   function recordChatMessage(event, direction) {
-    chatHistory.push({ event, direction });
+    const message = { id: nextChatMessageID, event, direction };
+    nextChatMessageID += 1;
+    chatHistory.push(message);
     if (chatHistory.length > MAX_LOG_ENTRIES) {
       chatHistory.splice(0, chatHistory.length - MAX_LOG_ENTRIES);
     }
-    renderChatHistory();
+    appendChatMessage(message);
   }
 
   function updateRelativeTimes(now = new Date()) {
@@ -178,6 +213,8 @@ export function mountWebSocketClient(root, { locale = "en", translate = (key) =>
   }
 
   function setView(view) {
+    const changed = activeView !== view;
+    activeView = view;
     for (const tab of tabs) {
       const selected = tab.dataset.wsTab === view;
       tab.className = `view-tab${selected ? " view-tab--active" : ""}`;
@@ -187,7 +224,7 @@ export function mountWebSocketClient(root, { locale = "en", translate = (key) =>
     for (const panel of panels) {
       panel.hidden = panel.dataset.wsPanel !== view;
     }
-    if (view === "chat") renderChatHistory();
+    if (view === "chat" && (changed || chatNeedsRender())) renderChatHistory();
   }
 
   function moveTab(event) {

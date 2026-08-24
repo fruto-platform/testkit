@@ -32,6 +32,12 @@ class FakeElement {
     this.children.push(...children);
   }
 
+  removeChild(child) {
+    const index = this.children.indexOf(child);
+    if (index >= 0) this.children.splice(index, 1);
+    return child;
+  }
+
   replaceChildren(...children) {
     this.children = children;
   }
@@ -284,6 +290,34 @@ test("rebuilds chat history when switching from JSON after the chat view is remo
   assert.equal(chat.children[0].children.at(-1).textContent, "history survives");
   assert.equal(chat.children[1].className, "chat-message chat-message--received");
   assert.equal(chat.children[1].children.at(-1).textContent, "history survives");
+});
+
+test("preserves existing chat nodes when appending to the live chat region", () => {
+  const root = createUI();
+  const connectButton = root.controls.get("[data-ws-connect]");
+  const messageInput = root.controls.get("[data-ws-message]");
+  const form = root.controls.get("[data-ws-form]");
+  const chat = root.controls.get("[data-ws-chat]");
+  const chatTab = root.collections.get("[data-ws-tab]")[1];
+
+  chatTab.dispatch("click");
+  connectButton.dispatch("click");
+  const socket = FakeWebSocket.current;
+  socket.emit("open");
+
+  messageInput.value = "first message";
+  form.dispatch("submit");
+  const firstMessage = chat.children[0];
+
+  messageInput.value = "second message";
+  form.dispatch("submit");
+
+  assert.equal(chat.children[0], firstMessage);
+  assert.equal(chat.children[0].children.at(-1).textContent, "first message");
+  assert.equal(chat.children[1].children.at(-1).textContent, "second message");
+
+  chatTab.dispatch("click");
+  assert.equal(chat.children[0], firstMessage);
 });
 
 test("formats relative timestamps in English", () => {

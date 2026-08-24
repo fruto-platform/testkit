@@ -1,0 +1,71 @@
+{{ define "content" -}}
+<main id="main-content" class="page-content page-content--lab" data-lab="rest">
+  {{ template "breadcrumbs" . }}
+
+  <section class="hero hero--compact" aria-labelledby="page-title">
+    <div class="hero-copy">
+      <p class="eyebrow accent-text">{{ .T "rest.eyebrow" }}</p>
+      <h1 id="page-title">{{ .T "rest.title" }} <em>{{ .T "rest.title_emphasis" }}</em></h1>
+      <p class="hero-lede">{{ .T "rest.lede" }}</p>
+    </div>
+    <a class="button button--secondary hero-back" href="{{ .HomeURL }}">{{ .T "lab.back" }}</a>
+  </section>
+
+  <section class="lab-section lab-section--first" aria-labelledby="rest-lab-title" data-rest-lab>
+    <div class="section-heading section-heading--lab">
+      <div>
+        <p class="eyebrow">{{ .T "rest.surface" }}</p>
+        <h2 id="rest-lab-title">{{ .T "rest.presets_title" }}</h2>
+        <p class="section-description">{{ .T "rest.description" }}</p>
+      </div>
+      <div class="lab-contract">
+        <span>{{ .T "lab.contract" }}</span>
+        <code>{{ .LabEndpoint }}</code>
+      </div>
+    </div>
+
+    <div class="lab-layout">
+      <aside class="preset-panel" aria-label="{{ .T "rest.presets_title" }}">
+        <p class="preset-panel__label">{{ .T "lab.scenarios" }}</p>
+        <div class="preset-list">
+          <button class="preset-button preset-button--active" type="button" data-rest-preset="status">{{ .T "rest.preset_status" }}</button>
+          <button class="preset-button" type="button" data-rest-preset="items">{{ .T "rest.preset_items" }}</button>
+          <button class="preset-button" type="button" data-rest-preset="echo">{{ .T "rest.preset_echo" }}</button>
+          <button class="preset-button" type="button" data-rest-preset="invalid">{{ .T "rest.preset_invalid" }}</button>
+        </div>
+        <p class="field-hint" data-rest-hint>{{ .T "rest.hint" }}</p>
+      </aside>
+
+      <article class="lab-output" aria-live="polite">
+        <header class="lab-output__header">
+          <div>
+            <p class="preset-panel__label">{{ .T "lab.request" }}</p>
+            <code data-rest-request-line>/api/status</code>
+          </div>
+          <span class="lab-result-status" data-rest-status>{{ .T "lab.waiting" }}</span>
+        </header>
+        <div class="lab-output__grid">
+          <section class="code-panel">
+            <h3>{{ .T "lab.request" }}</h3>
+            <pre data-rest-request>{"method":"GET","path":"/api/status"}</pre>
+          </section>
+          <section class="code-panel">
+            <h3>{{ .T "lab.response" }}</h3>
+            <pre data-rest-response>{{ .T "lab.run_to_see" }}</pre>
+          </section>
+        </div>
+        <footer class="lab-output__footer">
+          <span>{{ .T "lab.duration" }} <strong data-rest-duration>—</strong></span>
+          <span>{{ .T "lab.content_type" }} <strong data-rest-content-type>—</strong></span>
+        </footer>
+      </article>
+    </div>
+  </section>
+
+  <footer class="page-footer">
+    <span>{{ .T "footer.name" }}</span>
+    <span class="footer-separator" aria-hidden="true">/</span>
+    <span>{{ .T "footer.fixture" }}</span>
+  </footer>
+</main>
+{{- end }}

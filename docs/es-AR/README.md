@@ -20,9 +20,9 @@ contenedor.
 
 | Capacidad | Interfaz |
 | --- | --- |
-| Alias de detección de idioma | `GET /`, `GET /websocket` |
+| Aliases de detección de idioma | `GET /`, `GET /websocket`, `GET /rest`, `GET /graphql-lab`, `GET /sse` |
 | Páginas localizadas | `GET /en/`, `GET /pt-BR/`, `GET /es-AR/` |
-| Consola WebSocket localizada | `GET /en/websocket`, `GET /pt-BR/websocket`, `GET /es-AR/websocket` |
+| Laboratorios localizados en el navegador | `GET /en/rest`, `/en/graphql-lab`, `/en/sse`, `/en/websocket` y caminos traducidos equivalentes |
 | Asset estático | `GET /static/style.css` |
 | Liveness | `GET /healthz` |
 | Readiness | `GET /readyz` |
@@ -83,13 +83,16 @@ Respuesta esperada:
 ## Consola del navegador
 
 Abra `http://localhost:8080/` para detectar el idioma del navegador o use
-directamente `/en/`, `/pt-BR/` o `/es-AR/`. El laboratorio WebSocket está en el
-camino `/websocket` correspondiente. Muestra dos clientes
-independientes del mismo origen, `Client A` y `Client B`, para conectar ambos
-paneles, enviar un mensaje desde cualquiera y alternar entre eventos JSON sin
-procesar y una vista de chat con horarios locales de envío y recepción. Las
-conexiones son explícitas: la interfaz no se reconecta automáticamente después
-de un error o cierre.
+directamente `/en/`, `/pt-BR/` o `/es-AR/`. Los laboratorios están disponibles
+en los caminos `/rest`, `/graphql-lab`, `/sse` y `/websocket` correspondientes.
+REST y GraphQL usan presets guiados que muestran detalles de solicitud y
+respuesta. El laboratorio SSE muestra IDs, nombres y datos de eventos, con
+acciones explícitas para conectar, desconectar y reconectar. El laboratorio
+WebSocket muestra dos clientes independientes del mismo origen, `Client A` y
+`Client B`, para conectar ambos paneles, enviar un mensaje desde cualquiera y
+alternar entre eventos JSON crudos y una vista de chat con horarios locales de
+envío y recepción. Los clientes del navegador no se reconectan automáticamente
+después de un error o cierre.
 
 ## Ejemplos de protocolos
 

@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -23,8 +24,14 @@ func TestHandlerRoutes(t *testing.T) {
 	}{
 		{name: "root redirects", method: http.MethodGet, path: "/", statusCode: http.StatusFound},
 		{name: "websocket page redirects", method: http.MethodGet, path: "/websocket", statusCode: http.StatusFound},
+		{name: "rest lab redirects", method: http.MethodGet, path: "/rest", statusCode: http.StatusFound},
+		{name: "graphql lab redirects", method: http.MethodGet, path: "/graphql-lab", statusCode: http.StatusFound},
+		{name: "sse lab redirects", method: http.MethodGet, path: "/sse", statusCode: http.StatusFound},
 		{name: "english home", method: http.MethodGet, path: "/en/", statusCode: http.StatusOK},
 		{name: "english websocket page", method: http.MethodGet, path: "/en/websocket", statusCode: http.StatusOK},
+		{name: "english rest lab", method: http.MethodGet, path: "/en/rest", statusCode: http.StatusOK},
+		{name: "english graphql lab", method: http.MethodGet, path: "/en/graphql-lab", statusCode: http.StatusOK},
+		{name: "english sse lab", method: http.MethodGet, path: "/en/sse", statusCode: http.StatusOK},
 		{name: "portuguese home", method: http.MethodGet, path: "/pt-BR/", statusCode: http.StatusOK},
 		{name: "spanish websocket page", method: http.MethodGet, path: "/es-AR/websocket", statusCode: http.StatusOK},
 		{name: "liveness", method: http.MethodGet, path: "/healthz", statusCode: http.StatusOK},
@@ -98,7 +105,11 @@ func TestDashboardRendersWebSocketConsole(t *testing.T) {
 		"Transport console",
 		"build devel",
 		"Open lab",
+		"/en/rest",
+		"/en/graphql-lab",
+		"/en/sse",
 		"/en/websocket",
+		"4 active",
 		`data-locale="en"`,
 		"/static/app.js",
 	} {
@@ -108,6 +119,72 @@ func TestDashboardRendersWebSocketConsole(t *testing.T) {
 	}
 	if got := strings.Count(responseRecorder.Body.String(), "data-ws-client"); got != 0 {
 		t.Fatalf("home contains %d WebSocket clients, want 0", got)
+	}
+}
+
+func TestProtocolLabPagesRenderLocalizedContracts(t *testing.T) {
+	tests := []struct {
+		path     string
+		locale   string
+		content  string
+		endpoint string
+		marker   string
+		back     string
+	}{
+		{path: "/en/rest", locale: "en", content: "REST Lab", endpoint: "/api/*", marker: "data-rest-lab", back: "Back to surface map"},
+		{path: "/pt-BR/graphql-lab", locale: "pt-BR", content: "Laboratório GraphQL", endpoint: "/graphql", marker: "data-graphql-lab", back: "Voltar ao mapa de superfícies"},
+		{path: "/es-AR/sse", locale: "es-AR", content: "Laboratorio SSE", endpoint: "/events", marker: "data-sse-lab", back: "Volver al mapa de superficies"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.path, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, test.path, nil)
+			responseRecorder := httptest.NewRecorder()
+			newHandler().ServeHTTP(responseRecorder, request)
+
+			body := responseRecorder.Body.String()
+			if responseRecorder.Code != http.StatusOK {
+				t.Fatalf("status code = %d, want %d", responseRecorder.Code, http.StatusOK)
+			}
+			for _, want := range []string{
+				`<html lang="` + test.locale + `">`,
+				test.content,
+				test.endpoint,
+				test.marker,
+				test.back,
+			} {
+				if !strings.Contains(body, want) {
+					t.Fatalf("response does not contain %q", want)
+				}
+			}
+		})
+	}
+}
+
+func TestGraphQLLabFooterHasSingleSeparator(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "/en/graphql-lab", nil)
+	responseRecorder := httptest.NewRecorder()
+
+	newHandler().ServeHTTP(responseRecorder, request)
+
+	if got := strings.Count(responseRecorder.Body.String(), `<span class="footer-separator" aria-hidden="true">/</span>`); got != 1 {
+		t.Fatalf("GraphQL lab footer separators = %d, want 1", got)
+	}
+}
+
+func TestDocumentationListsBrowserLabAliases(t *testing.T) {
+	for _, path := range []string{"README.md", "docs/pt-BR/README.md", "docs/es-AR/README.md"} {
+		t.Run(path, func(t *testing.T) {
+			content, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("read documentation: %v", err)
+			}
+			for _, alias := range []string{"GET /rest", "GET /graphql-lab", "GET /sse"} {
+				if !strings.Contains(string(content), alias) {
+					t.Fatalf("documentation does not list browser alias %q", alias)
+				}
+			}
+		})
 	}
 }
 
@@ -152,6 +229,7 @@ func TestLocaleAliasRedirectsByPreference(t *testing.T) {
 	}{
 		{name: "accept language", path: "/", acceptLanguage: "pt-BR, en;q=0.8", location: "/pt-BR/"},
 		{name: "cookie wins over header", path: "/websocket", acceptLanguage: "en", cookie: "es-AR", location: "/es-AR/websocket"},
+		{name: "lab alias uses preference", path: "/rest", acceptLanguage: "pt-BR", location: "/pt-BR/rest"},
 		{name: "query wins over cookie", path: "/", acceptLanguage: "en", cookie: "pt-BR", query: "?lang=es-AR", location: "/es-AR/"},
 		{name: "fallback", path: "/", acceptLanguage: "de-DE", location: "/en/"},
 	}

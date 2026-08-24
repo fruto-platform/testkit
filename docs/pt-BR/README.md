@@ -19,9 +19,9 @@ saída; diagnósticos de rede exigem um comando explícito do contêiner.
 
 | Capacidade | Interface |
 | --- | --- |
-| Alias de detecção de idioma | `GET /`, `GET /websocket` |
+| Aliases de detecção de idioma | `GET /`, `GET /websocket`, `GET /rest`, `GET /graphql-lab`, `GET /sse` |
 | Páginas localizadas | `GET /en/`, `GET /pt-BR/`, `GET /es-AR/` |
-| Console WebSocket localizado | `GET /en/websocket`, `GET /pt-BR/websocket`, `GET /es-AR/websocket` |
+| Laboratórios localizados no browser | `GET /en/rest`, `/en/graphql-lab`, `/en/sse`, `/en/websocket` e caminhos traduzidos correspondentes |
 | Asset estático | `GET /static/style.css` |
 | Liveness | `GET /healthz` |
 | Readiness | `GET /readyz` |
@@ -82,13 +82,16 @@ Resposta esperada:
 ## Console no navegador
 
 Abra `http://localhost:8080/` para detectar o idioma do navegador ou use
-diretamente `/en/`, `/pt-BR/` ou `/es-AR/`. O laboratório WebSocket fica no
-caminho `/websocket` correspondente. Ele mostra dois
+diretamente `/en/`, `/pt-BR/` ou `/es-AR/`. Os laboratórios ficam nos caminhos
+`/rest`, `/graphql-lab`, `/sse` e `/websocket` correspondentes. REST e GraphQL
+usam presets guiados que mostram detalhes da requisição e da resposta. O
+laboratório SSE mostra IDs, nomes e dados dos eventos, com ações explícitas de
+conectar, desconectar e reconectar. O laboratório WebSocket mostra dois
 clientes independentes da mesma origem, `Client A` e `Client B`, permitindo
 conectar os dois painéis, enviar uma mensagem por um deles e alternar entre os
 eventos JSON brutos e uma visão de chat com horários locais de envio e
-recebimento. As conexões são explícitas: a interface não reconecta
-automaticamente após erro ou encerramento.
+recebimento. Os clientes do browser não reconectam automaticamente após erro ou
+encerramento.
 
 ## Exemplos de protocolos
 

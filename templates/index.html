@@ -9,8 +9,8 @@
     <div class="hero-note" aria-label="{{ .T "home.scope_label" }}">
       <span class="hero-note__dot" aria-hidden="true"></span>
       <div>
-        <strong>{{ .T "home.websocket_active" }}</strong>
-        <span>{{ .T "home.future_protocols" }}</span>
+        <strong>{{ .T "home.protocols_active" }}</strong>
+        <span>{{ .T "home.protocols_lede" }}</span>
       </div>
     </div>
   </section>
@@ -21,20 +21,10 @@
         <p class="eyebrow">{{ .T "home.surface_map" }}</p>
         <h2 id="protocols-title">{{ .T "home.transport_coverage" }}</h2>
       </div>
-      <span class="section-count">{{ len .Protocols }} {{ .T "home.queued" }} · 1 {{ .T "home.active" }}</span>
+      <span class="section-count">{{ len .Protocols }} {{ .T "home.active" }}</span>
     </div>
     <div class="protocol-grid">
       {{ range .Protocols }}{{ template "protocol-card" . }}{{ end }}
-      <article class="protocol-card protocol-card--active">
-        <div class="protocol-card__topline">
-          <span class="protocol-index">04</span>
-          {{ template "status-badge" $.ActiveStatus }}
-        </div>
-        <h3>{{ .T "home.websocket_name" }}</h3>
-        <code>{{ .T "home.websocket_endpoint" }}</code>
-        <p>{{ .T "home.websocket_description" }}</p>
-        <a class="protocol-card__link" href="{{ .WebSocketURL }}">{{ .T "home.open_lab" }} <span aria-hidden="true">↗</span></a>
-      </article>
     </div>
   </section>
 

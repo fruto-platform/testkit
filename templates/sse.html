@@ -1,0 +1,63 @@
+{{ define "content" -}}
+<main id="main-content" class="page-content page-content--lab" data-lab="sse" data-sse-url="/events">
+  {{ template "breadcrumbs" . }}
+
+  <section class="hero hero--compact" aria-labelledby="page-title">
+    <div class="hero-copy">
+      <p class="eyebrow accent-text">{{ .T "sse.eyebrow" }}</p>
+      <h1 id="page-title">{{ .T "sse.title" }} <em>{{ .T "sse.title_emphasis" }}</em></h1>
+      <p class="hero-lede">{{ .T "sse.lede" }}</p>
+    </div>
+    <a class="button button--secondary hero-back" href="{{ .HomeURL }}">{{ .T "lab.back" }}</a>
+  </section>
+
+  <section class="lab-section lab-section--first" aria-labelledby="sse-lab-title" data-sse-lab>
+    <div class="section-heading section-heading--lab">
+      <div>
+        <p class="eyebrow">{{ .T "sse.surface" }}</p>
+        <h2 id="sse-lab-title">{{ .T "sse.stream_title" }}</h2>
+        <p class="section-description">{{ .T "sse.description" }}</p>
+      </div>
+      <div class="lab-contract">
+        <span>{{ .T "lab.contract" }}</span>
+        <code>{{ .LabEndpoint }}</code>
+      </div>
+    </div>
+
+    <article class="stream-card">
+      <header class="stream-card__header">
+        <div>
+          <p class="preset-panel__label">{{ .T "sse.live_stream" }}</p>
+          <code>/events</code>
+        </div>
+        <div class="connection-status connection-status--disconnected" data-sse-status role="status" aria-live="polite">
+          <span class="connection-status__dot" aria-hidden="true"></span>
+          <span data-sse-status-text>{{ .T "sse.disconnected" }}</span>
+        </div>
+      </header>
+      <div class="stream-card__body">
+        <div class="client-card__actions">
+          <button class="button button--primary" type="button" data-sse-connect>{{ .T "sse.connect" }}</button>
+          <button class="button button--secondary" type="button" data-sse-disconnect disabled>{{ .T "sse.disconnect" }}</button>
+        </div>
+        <p class="field-hint" data-sse-hint>{{ .T "sse.disconnected_hint" }}</p>
+        <div class="event-log" data-sse-event-log aria-label="{{ .T "sse.event_log" }}">
+          <div class="event-log__header">
+            <span>{{ .T "sse.event_log" }}</span>
+            <span class="event-log__format" data-sse-count>0</span>
+          </div>
+          <ol class="event-log__list" data-sse-events aria-live="polite">
+            <li class="event-log__empty" data-sse-empty>{{ .T "sse.waiting" }}</li>
+          </ol>
+        </div>
+      </div>
+    </article>
+  </section>
+
+  <footer class="page-footer">
+    <span>{{ .T "footer.name" }}</span>
+    <span class="footer-separator" aria-hidden="true">/</span>
+    <span>{{ .T "footer.fixture" }}</span>
+  </footer>
+</main>
+{{- end }}
