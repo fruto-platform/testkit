@@ -9,6 +9,22 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 No changes yet.
 
+## [0.2.0] - 2026-08-24
+
+### Added
+
+- Localized REST, GraphQL, and Server-Sent Events browser laboratories.
+- Guided REST presets for status, items, echo, and error responses.
+- Guided GraphQL presets for status/version, variables, and invalid queries.
+- Explicit SSE connect, disconnect, and reconnect controls with event details.
+- Browser regression coverage for the new laboratories and localized routes.
+
+### Changed
+
+- The home protocol map now links to active REST, GraphQL, SSE, and WebSocket
+  laboratories.
+- README documentation now includes the localized browser laboratory aliases.
+
 ## [0.1.1] - 2026-08-23
 
 ### Fixed
@@ -46,7 +62,8 @@ No changes yet.
 
 - Initial multi-platform image publication workflow for GitHub Container Registry.
 
-[Unreleased]: https://github.com/molejo-platform/testkit/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/molejo-platform/testkit/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/molejo-platform/testkit/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/molejo-platform/testkit/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/molejo-platform/testkit/compare/v0.0.2...v0.1.0
 [0.0.2]: https://github.com/molejo-platform/testkit/compare/v0.0.1...v0.0.2
