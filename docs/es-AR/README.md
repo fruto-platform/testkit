@@ -178,6 +178,31 @@ cross-origin de navegadores son rechazadas.
 Los valores inválidos o no positivos de `SSE_INTERVAL` usan el valor
 predeterminado.
 
+## Logs estructurados
+
+El modo servidor escribe logs JSON delimitados por línea en la salida estándar.
+Cada registro incluye `service` y `version`. Los principales valores de `event`
+son:
+
+- `server.started`, `server.stopped` y eventos de falla del servidor;
+- `http.request.completed` para `/api/status`, `/api/items` y `/api/echo`, con
+  método, ruta estable, código de estado, duración en milisegundos y bytes de
+  respuesta;
+- `connection.opened` y `connection.closed` para WebSocket y SSE, con las
+  cantidades de conexiones activas del protocolo y totales y la duración al cerrar;
+- `connections.snapshot` cada 15 minutos mientras haya al menos una conexión
+  activa.
+
+Los eventos de ciclo de vida y snapshots incluyen `connection_sequence`, que
+aumenta con cada transición de estado de conexión en el proceso. Los consumidores
+pueden usarla para reconstruir el orden de las transiciones cuando los registros
+concurrentes llegan fuera de orden.
+
+Las cantidades de conexiones son locales a un proceso y se reinician junto con
+él. Los logs no incluyen direcciones de clientes, headers, query strings,
+payloads de requests, mensajes WebSocket ni datos SSE. Son hechos de prueba
+observables, no métricas durables o globales.
+
 ## Distribución de la imagen
 
 Las releases versionadas publican imágenes multiplataforma en GitHub Container

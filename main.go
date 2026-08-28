@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"html/template"
 	"io"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -25,14 +25,15 @@ import (
 )
 
 const (
-	maxJSONBodyBytes    = 64 * 1024
-	maxGraphQLBodyBytes = 16 * 1024
-	maxWebSocketBytes   = 4 * 1024
-	defaultSSEInterval  = time.Second
-	shutdownTimeout     = 5 * time.Second
-	writeWait           = 10 * time.Second
-	pongWait            = 60 * time.Second
-	pingPeriod          = (pongWait * 9) / 10
+	maxJSONBodyBytes         = 64 * 1024
+	maxGraphQLBodyBytes      = 16 * 1024
+	maxWebSocketBytes        = 4 * 1024
+	defaultSSEInterval       = time.Second
+	connectionReportInterval = 15 * time.Minute
+	shutdownTimeout          = 5 * time.Second
+	writeWait                = 10 * time.Second
+	pongWait                 = 60 * time.Second
+	pingPeriod               = (pongWait * 9) / 10
 )
 
 // webFiles is embedded so the final scratch image needs no filesystem asset.
@@ -143,11 +144,44 @@ func (view webSocketClientView) T(key string) string {
 
 type handlerConfig struct {
 	sseInterval time.Duration
+	logger      *slog.Logger
 }
 
 type application struct {
-	handler http.Handler
-	hub     *webSocketHub
+	handler     http.Handler
+	hub         *webSocketHub
+	logger      *slog.Logger
+	connections *connectionStats
+}
+
+const (
+	protocolWebSocket = "websocket"
+	protocolSSE       = "sse"
+)
+
+type connectionStats struct {
+	mutex     sync.Mutex
+	webSocket int
+	sse       int
+	sequence  uint64
+}
+
+func (stats *connectionStats) change(protocol string, delta int) (protocolActive, totalActive int, sequence uint64) {
+	stats.mutex.Lock()
+	defer stats.mutex.Unlock()
+	stats.sequence++
+	if protocol == protocolWebSocket {
+		stats.webSocket += delta
+		return stats.webSocket, stats.webSocket + stats.sse, stats.sequence
+	}
+	stats.sse += delta
+	return stats.sse, stats.webSocket + stats.sse, stats.sequence
+}
+
+func (stats *connectionStats) snapshot() (webSocket, sse int, sequence uint64) {
+	stats.mutex.Lock()
+	defer stats.mutex.Unlock()
+	return stats.webSocket, stats.sse, stats.sequence
 }
 
 func newPageTemplates(page string) *template.Template {
@@ -167,17 +201,25 @@ func main() {
 		os.Exit(2)
 	}
 
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil)).With(
+		"service", "molejo-testkit",
+		"version", version,
+	)
+	slog.SetDefault(logger)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	listener, err := net.Listen("tcp", ":8080")
 	if err != nil {
-		log.Fatal(err)
+		logger.ErrorContext(ctx, "server listen failed", "event", "server.listen_failed", "error", err)
+		os.Exit(1)
 	}
-	app := newApplication(handlerConfig{sseInterval: sseIntervalFromEnv()})
-	log.Printf("testkit %s listening on %s", version, listener.Addr())
+	app := newApplication(handlerConfig{sseInterval: sseIntervalFromEnv(), logger: logger})
+	logger.InfoContext(ctx, "server started", "event", "server.started", "listen_address", listener.Addr().String())
 	if err := serve(ctx, listener, app); err != nil {
-		log.Fatal(err)
+		logger.ErrorContext(ctx, "server failed", "event", "server.failed", "error", err)
+		os.Exit(1)
 	}
+	logger.Info("server stopped", "event", "server.stopped")
 }
 
 func serve(ctx context.Context, listener net.Listener, app *application) error {
@@ -191,6 +233,18 @@ func serve(ctx context.Context, listener net.Listener, app *application) error {
 			return ctx
 		},
 	}
+	reporterCtx, stopReporter := context.WithCancel(ctx)
+	reporterDone := make(chan struct{})
+	go func() {
+		defer close(reporterDone)
+		ticker := time.NewTicker(connectionReportInterval)
+		defer ticker.Stop()
+		app.reportActiveConnections(reporterCtx, ticker.C)
+	}()
+	defer func() {
+		stopReporter()
+		<-reporterDone
+	}()
 
 	serveResult := make(chan error, 1)
 	go func() {
@@ -230,8 +284,12 @@ func newApplication(config handlerConfig) *application {
 	if config.sseInterval <= 0 {
 		config.sseInterval = defaultSSEInterval
 	}
+	if config.logger == nil {
+		config.logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+	}
 
 	webSocketHub := newWebSocketHub()
+	connections := &connectionStats{}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", exactGET("/", redirectToLocalized("/")))
 	mux.HandleFunc("/websocket", exactGET("/websocket", redirectToLocalized("/websocket")))
@@ -256,22 +314,101 @@ func newApplication(config handlerConfig) *application {
 	mux.HandleFunc("/not-ready", exactGET("/not-ready", func(writer http.ResponseWriter, _ *http.Request) {
 		writeJSON(writer, http.StatusServiceUnavailable, response{Status: "not-ready", Version: version})
 	}))
-	mux.HandleFunc("/api/status", exactGET("/api/status", writeOK))
-	mux.HandleFunc("/api/items", exactGET("/api/items", listItems))
-	mux.HandleFunc("/api/echo", apiEcho)
+	mux.HandleFunc("/api/status", logHTTPRequest(config.logger, "/api/status", exactGET("/api/status", writeOK)))
+	mux.HandleFunc("/api/items", logHTTPRequest(config.logger, "/api/items", exactGET("/api/items", listItems)))
+	mux.HandleFunc("/api/echo", logHTTPRequest(config.logger, "/api/echo", apiEcho))
 	mux.HandleFunc("/graphql", graphQL)
 	mux.HandleFunc("/events", exactGET("/events", func(writer http.ResponseWriter, request *http.Request) {
-		events(writer, request, config.sseInterval)
+		events(writer, request, config.sseInterval, config.logger, connections)
 	}))
 	mux.HandleFunc("/ws", func(writer http.ResponseWriter, request *http.Request) {
-		webSocket(writer, request, webSocketHub)
+		webSocket(writer, request, webSocketHub, config.logger, connections)
 	})
 
-	return &application{handler: mux, hub: webSocketHub}
+	return &application{
+		handler:     mux,
+		hub:         webSocketHub,
+		logger:      config.logger,
+		connections: connections,
+	}
 }
 
 func (app *application) close() {
 	app.hub.close()
+}
+
+func (app *application) reportActiveConnections(ctx context.Context, ticks <-chan time.Time) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case _, ok := <-ticks:
+			if !ok {
+				return
+			}
+			app.logActiveConnections(ctx)
+		}
+	}
+}
+
+func (app *application) logActiveConnections(ctx context.Context) {
+	webSocketActive, sseActive, sequence := app.connections.snapshot()
+	if webSocketActive+sseActive == 0 {
+		return
+	}
+	app.logger.InfoContext(ctx, "active connections",
+		"event", "connections.snapshot",
+		"websocket_active", webSocketActive,
+		"sse_active", sseActive,
+		"total_active", webSocketActive+sseActive,
+		"connection_sequence", sequence,
+	)
+}
+
+type responseLogWriter struct {
+	http.ResponseWriter
+	statusCode int
+	bytes      int
+}
+
+func (writer *responseLogWriter) WriteHeader(statusCode int) {
+	if writer.statusCode == 0 {
+		writer.statusCode = statusCode
+	}
+	writer.ResponseWriter.WriteHeader(statusCode)
+}
+
+func (writer *responseLogWriter) Write(data []byte) (int, error) {
+	if writer.statusCode == 0 {
+		writer.statusCode = http.StatusOK
+	}
+	written, err := writer.ResponseWriter.Write(data)
+	writer.bytes += written
+	return written, err
+}
+
+func logHTTPRequest(logger *slog.Logger, route string, handler http.HandlerFunc) http.HandlerFunc {
+	return func(writer http.ResponseWriter, request *http.Request) {
+		started := time.Now()
+		logWriter := &responseLogWriter{ResponseWriter: writer}
+		handler(logWriter, request)
+		statusCode := logWriter.statusCode
+		if statusCode == 0 {
+			statusCode = http.StatusOK
+		}
+		logger.InfoContext(request.Context(), "HTTP request completed",
+			"event", "http.request.completed",
+			"http_method", request.Method,
+			"route", route,
+			"status_code", statusCode,
+			"duration_ms", durationMilliseconds(time.Since(started)),
+			"response_bytes", logWriter.bytes,
+		)
+	}
+}
+
+func durationMilliseconds(duration time.Duration) float64 {
+	return float64(duration.Microseconds()) / 1000
 }
 
 func exactGET(path string, handler http.HandlerFunc) http.HandlerFunc {
@@ -432,7 +569,7 @@ func renderLocalizedPage(writer http.ResponseWriter, templates *template.Templat
 func renderPage(writer http.ResponseWriter, templates *template.Template, data pageData) {
 	var page bytes.Buffer
 	if err := templates.ExecuteTemplate(&page, "base", data); err != nil {
-		log.Printf("render dashboard: %v", err)
+		slog.Error("render dashboard failed", "event", "page.render_failed", "error", err)
 		http.Error(writer, "static page unavailable", http.StatusInternalServerError)
 		return
 	}
@@ -555,7 +692,32 @@ func newGraphQLSchema() graphql.Schema {
 	return schema
 }
 
-func events(writer http.ResponseWriter, request *http.Request, interval time.Duration) {
+func observeConnection(ctx context.Context, logger *slog.Logger, stats *connectionStats, protocol, route string) func() {
+	started := time.Now()
+	protocolActive, totalActive, sequence := stats.change(protocol, 1)
+	logger.InfoContext(ctx, "connection opened",
+		"event", "connection.opened",
+		"protocol", protocol,
+		"route", route,
+		"protocol_active", protocolActive,
+		"total_active", totalActive,
+		"connection_sequence", sequence,
+	)
+	return func() {
+		protocolActive, totalActive, sequence := stats.change(protocol, -1)
+		logger.InfoContext(ctx, "connection closed",
+			"event", "connection.closed",
+			"protocol", protocol,
+			"route", route,
+			"protocol_active", protocolActive,
+			"total_active", totalActive,
+			"connection_sequence", sequence,
+			"duration_ms", durationMilliseconds(time.Since(started)),
+		)
+	}
+}
+
+func events(writer http.ResponseWriter, request *http.Request, interval time.Duration, logger *slog.Logger, stats *connectionStats) {
 	flusher, ok := writer.(http.Flusher)
 	if !ok {
 		http.Error(writer, "streaming unsupported", http.StatusInternalServerError)
@@ -566,6 +728,8 @@ func events(writer http.ResponseWriter, request *http.Request, interval time.Dur
 	writer.Header().Set("Connection", "keep-alive")
 	writer.Header().Set("X-Accel-Buffering", "no")
 	writer.WriteHeader(http.StatusOK)
+	connectionClosed := observeConnection(request.Context(), logger, stats, protocolSSE, "/events")
+	defer connectionClosed()
 
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -672,7 +836,7 @@ func sameWebSocketOrigin(request *http.Request) bool {
 	return strings.EqualFold(parsedOrigin.Host, request.Host)
 }
 
-func webSocket(writer http.ResponseWriter, request *http.Request, hub *webSocketHub) {
+func webSocket(writer http.ResponseWriter, request *http.Request, hub *webSocketHub, logger *slog.Logger, stats *connectionStats) {
 	connection, err := webSocketUpgrader.Upgrade(writer, request, nil)
 	if err != nil {
 		return
@@ -682,9 +846,11 @@ func webSocket(writer http.ResponseWriter, request *http.Request, hub *webSocket
 		_ = connection.Close()
 		return
 	}
+	connectionClosed := observeConnection(request.Context(), logger, stats, protocolWebSocket, "/ws")
 	defer func() {
 		client.hub.unregister(client)
 		_ = connection.Close()
+		connectionClosed()
 	}()
 
 	go client.writePump()
@@ -774,6 +940,6 @@ func writeJSON(writer http.ResponseWriter, statusCode int, payload interface{}) 
 	writer.Header().Set("Content-Type", "application/json")
 	writer.WriteHeader(statusCode)
 	if err := json.NewEncoder(writer).Encode(payload); err != nil {
-		log.Printf("encode response: %v", err)
+		slog.Error("encode response failed", "event", "response.encode_failed", "error", err)
 	}
 }

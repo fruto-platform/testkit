@@ -2,18 +2,110 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/gorilla/websocket"
 )
+
+type lockedBuffer struct {
+	mutex sync.Mutex
+	bytes.Buffer
+}
+
+type failingFlusherWriter struct {
+	header     http.Header
+	statusCode int
+}
+
+func (writer *failingFlusherWriter) Header() http.Header {
+	return writer.header
+}
+
+func (writer *failingFlusherWriter) WriteHeader(statusCode int) {
+	writer.statusCode = statusCode
+}
+
+func (*failingFlusherWriter) Write([]byte) (int, error) {
+	return 0, errors.New("controlled write failure")
+}
+
+func (*failingFlusherWriter) Flush() {}
+
+func (buffer *lockedBuffer) Write(data []byte) (int, error) {
+	buffer.mutex.Lock()
+	defer buffer.mutex.Unlock()
+	return buffer.Buffer.Write(data)
+}
+
+func (buffer *lockedBuffer) String() string {
+	buffer.mutex.Lock()
+	defer buffer.mutex.Unlock()
+	return buffer.Buffer.String()
+}
+
+func newTestLogger() (*slog.Logger, *lockedBuffer) {
+	output := &lockedBuffer{}
+	return slog.New(slog.NewJSONHandler(output, nil)), output
+}
+
+func logRecords(t *testing.T, output *lockedBuffer) []map[string]interface{} {
+	t.Helper()
+	lines := strings.Split(strings.TrimSpace(output.String()), "\n")
+	if len(lines) == 1 && lines[0] == "" {
+		return nil
+	}
+	records := make([]map[string]interface{}, 0, len(lines))
+	for _, line := range lines {
+		var record map[string]interface{}
+		if err := json.Unmarshal([]byte(line), &record); err != nil {
+			t.Fatalf("decode log record %q: %v", line, err)
+		}
+		records = append(records, record)
+	}
+	return records
+}
+
+func waitForLogEvent(t *testing.T, output *lockedBuffer, event string, count int) []map[string]interface{} {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		records := logRecords(t, output)
+		matches := 0
+		for _, record := range records {
+			if record["event"] == event {
+				matches++
+			}
+		}
+		if matches >= count {
+			return records
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for %d %q log records: %s", count, event, output.String())
+	return nil
+}
+
+func recordsForEvent(records []map[string]interface{}, event string) []map[string]interface{} {
+	matches := make([]map[string]interface{}, 0, len(records))
+	for _, record := range records {
+		if record["event"] == event {
+			matches = append(matches, record)
+		}
+	}
+	return matches
+}
 
 func TestHandlerRoutes(t *testing.T) {
 	tests := []struct {
@@ -57,6 +149,274 @@ func TestHandlerRoutes(t *testing.T) {
 				t.Fatalf("status code = %d, want %d", responseRecorder.Code, test.statusCode)
 			}
 		})
+	}
+}
+
+func TestRESTRequestLog(t *testing.T) {
+	logger, output := newTestLogger()
+	request := httptest.NewRequest(http.MethodGet, "/api/status?ignored=value", nil)
+	responseRecorder := httptest.NewRecorder()
+
+	newHandlerWithConfig(handlerConfig{logger: logger}).ServeHTTP(responseRecorder, request)
+
+	records := logRecords(t, output)
+	if len(records) != 1 {
+		t.Fatalf("log record count = %d, want 1: %s", len(records), output.String())
+	}
+	record := records[0]
+	for key, want := range map[string]interface{}{
+		"event":          "http.request.completed",
+		"http_method":    http.MethodGet,
+		"route":          "/api/status",
+		"status_code":    float64(http.StatusOK),
+		"response_bytes": float64(responseRecorder.Body.Len()),
+	} {
+		if got := record[key]; got != want {
+			t.Errorf("log attribute %q = %#v, want %#v", key, got, want)
+		}
+	}
+	if duration, ok := record["duration_ms"].(float64); !ok || duration < 0 {
+		t.Errorf("duration_ms = %#v, want a non-negative number", record["duration_ms"])
+	}
+	if strings.Contains(output.String(), "ignored") {
+		t.Fatalf("request query leaked into log: %s", output.String())
+	}
+}
+
+func TestRESTRequestFactsCoverFailuresAndRedaction(t *testing.T) {
+	tests := []struct {
+		name       string
+		method     string
+		body       string
+		statusCode int
+	}{
+		{name: "success", method: http.MethodPost, body: `{"secret":"do-not-log"}`, statusCode: http.StatusOK},
+		{name: "invalid JSON", method: http.MethodPost, body: `{"secret":"do-not-log"`, statusCode: http.StatusBadRequest},
+		{name: "method not allowed", method: http.MethodGet, statusCode: http.StatusMethodNotAllowed},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			logger, output := newTestLogger()
+			request := httptest.NewRequest(test.method, "/api/echo?token=do-not-log", strings.NewReader(test.body))
+			responseRecorder := httptest.NewRecorder()
+
+			newHandlerWithConfig(handlerConfig{logger: logger}).ServeHTTP(responseRecorder, request)
+
+			records := logRecords(t, output)
+			if len(records) != 1 {
+				t.Fatalf("log record count = %d, want 1: %s", len(records), output.String())
+			}
+			record := records[0]
+			if record["status_code"] != float64(test.statusCode) {
+				t.Errorf("status_code = %#v, want %d", record["status_code"], test.statusCode)
+			}
+			if record["response_bytes"] != float64(responseRecorder.Body.Len()) {
+				t.Errorf("response_bytes = %#v, want %d", record["response_bytes"], responseRecorder.Body.Len())
+			}
+			if strings.Contains(output.String(), "do-not-log") || strings.Contains(output.String(), "token") {
+				t.Fatalf("request data leaked into log: %s", output.String())
+			}
+		})
+	}
+}
+
+func TestConnectionStatsTracksBothProtocols(t *testing.T) {
+	var stats connectionStats
+
+	protocolActive, totalActive, sequence := stats.change(protocolWebSocket, 1)
+	if protocolActive != 1 || totalActive != 1 || sequence != 1 {
+		t.Fatalf("first change = (%d, %d, %d), want (1, 1, 1)", protocolActive, totalActive, sequence)
+	}
+	protocolActive, totalActive, sequence = stats.change(protocolSSE, 1)
+	if protocolActive != 1 || totalActive != 2 || sequence != 2 {
+		t.Fatalf("second change = (%d, %d, %d), want (1, 2, 2)", protocolActive, totalActive, sequence)
+	}
+	protocolActive, totalActive, sequence = stats.change(protocolWebSocket, -1)
+	if protocolActive != 0 || totalActive != 1 || sequence != 3 {
+		t.Fatalf("third change = (%d, %d, %d), want (0, 1, 3)", protocolActive, totalActive, sequence)
+	}
+	protocolActive, totalActive, sequence = stats.change(protocolSSE, -1)
+	if protocolActive != 0 || totalActive != 0 || sequence != 4 {
+		t.Fatalf("last change = (%d, %d, %d), want (0, 0, 4)", protocolActive, totalActive, sequence)
+	}
+}
+
+func TestConcurrentConnectionFactsCarryTransitionOrder(t *testing.T) {
+	// The logger may emit concurrent records out of order, so each fact must carry
+	// the sequence assigned atomically with its state transition.
+	const connectionCount = 256
+	logger, output := newTestLogger()
+	var stats connectionStats
+	start := make(chan struct{})
+	connections := make(chan func(), connectionCount)
+	var waitGroup sync.WaitGroup
+	for range connectionCount {
+		waitGroup.Add(1)
+		go func() {
+			defer waitGroup.Done()
+			<-start
+			connections <- observeConnection(context.Background(), logger, &stats, protocolWebSocket, "/ws")
+		}()
+	}
+	close(start)
+	waitGroup.Wait()
+	close(connections)
+	closeConnections := make([]func(), 0, connectionCount)
+	for closeConnection := range connections {
+		closeConnections = append(closeConnections, closeConnection)
+	}
+	t.Cleanup(func() {
+		for _, closeConnection := range closeConnections {
+			closeConnection()
+		}
+	})
+
+	opened := recordsForEvent(logRecords(t, output), "connection.opened")
+	if len(opened) != connectionCount {
+		t.Fatalf("opened log count = %d, want %d", len(opened), connectionCount)
+	}
+	seenSequences := make([]bool, connectionCount+1)
+	for _, record := range opened {
+		sequence, ok := record["connection_sequence"].(float64)
+		if !ok || sequence < 1 || sequence > connectionCount || sequence != float64(int(sequence)) {
+			t.Fatalf("connection_sequence = %#v, want an integer between 1 and %d", record["connection_sequence"], connectionCount)
+		}
+		index := int(sequence)
+		if seenSequences[index] {
+			t.Fatalf("connection_sequence %d was emitted more than once", index)
+		}
+		seenSequences[index] = true
+		if record["protocol_active"] != sequence || record["total_active"] != sequence {
+			t.Fatalf("sequence %v has counts (%v, %v), want (%v, %v)", sequence, record["protocol_active"], record["total_active"], sequence, sequence)
+		}
+	}
+}
+
+func TestActiveConnectionSnapshotSkipsEmptyState(t *testing.T) {
+	logger, output := newTestLogger()
+	app := newApplication(handlerConfig{logger: logger})
+
+	app.logActiveConnections(context.Background())
+	if records := logRecords(t, output); len(records) != 0 {
+		t.Fatalf("empty snapshot emitted logs: %s", output.String())
+	}
+	app.connections.change(protocolSSE, 1)
+	app.logActiveConnections(context.Background())
+	records := logRecords(t, output)
+	record := records[len(records)-1]
+	if record["websocket_active"] != float64(0) || record["sse_active"] != float64(1) || record["total_active"] != float64(1) || record["connection_sequence"] != float64(1) {
+		t.Fatalf("snapshot log = %#v, want one active SSE", record)
+	}
+}
+
+func TestActiveConnectionReporterLogsOnTickAndStopsWhenTicksClose(t *testing.T) {
+	logger, output := newTestLogger()
+	app := newApplication(handlerConfig{logger: logger})
+	app.connections.change(protocolWebSocket, 1)
+	ticks := make(chan time.Time)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		app.reportActiveConnections(context.Background(), ticks)
+	}()
+
+	ticks <- time.Now()
+	waitForLogEvent(t, output, "connections.snapshot", 1)
+	close(ticks)
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("connection reporter did not stop after its tick channel closed")
+	}
+}
+
+func TestRejectedTransportsDoNotBecomeActiveConnections(t *testing.T) {
+	t.Run("SSE without flushing", func(t *testing.T) {
+		logger, output := newTestLogger()
+		var stats connectionStats
+		responseRecorder := httptest.NewRecorder()
+		writer := &responseLogWriter{ResponseWriter: responseRecorder}
+		request := httptest.NewRequest(http.MethodGet, "/events", nil)
+
+		events(writer, request, time.Millisecond, logger, &stats)
+
+		if responseRecorder.Code != http.StatusInternalServerError {
+			t.Fatalf("status code = %d, want %d", responseRecorder.Code, http.StatusInternalServerError)
+		}
+		webSocketActive, sseActive, _ := stats.snapshot()
+		if webSocketActive != 0 || sseActive != 0 {
+			t.Fatalf("active connections = (%d, %d), want (0, 0)", webSocketActive, sseActive)
+		}
+		if records := logRecords(t, output); len(records) != 0 {
+			t.Fatalf("rejected SSE emitted connection facts: %s", output.String())
+		}
+	})
+
+	t.Run("invalid WebSocket upgrade", func(t *testing.T) {
+		logger, output := newTestLogger()
+		app := newApplication(handlerConfig{logger: logger})
+		request := httptest.NewRequest(http.MethodGet, "/ws", nil)
+		responseRecorder := httptest.NewRecorder()
+
+		app.handler.ServeHTTP(responseRecorder, request)
+
+		if responseRecorder.Code != http.StatusBadRequest {
+			t.Fatalf("status code = %d, want %d", responseRecorder.Code, http.StatusBadRequest)
+		}
+		webSocketActive, sseActive, _ := app.connections.snapshot()
+		if webSocketActive != 0 || sseActive != 0 {
+			t.Fatalf("active connections = (%d, %d), want (0, 0)", webSocketActive, sseActive)
+		}
+		if records := logRecords(t, output); len(records) != 0 {
+			t.Fatalf("rejected WebSocket emitted connection facts: %s", output.String())
+		}
+	})
+
+	t.Run("WebSocket after hub shutdown", func(t *testing.T) {
+		logger, output := newTestLogger()
+		app := newApplication(handlerConfig{logger: logger})
+		app.hub.close()
+		server := httptest.NewServer(app.handler)
+		t.Cleanup(server.Close)
+
+		connection, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(server.URL, "http")+"/ws", nil)
+		if err != nil {
+			t.Fatalf("dial WebSocket: %v", err)
+		}
+		_ = connection.Close()
+		webSocketActive, sseActive, _ := app.connections.snapshot()
+		if webSocketActive != 0 || sseActive != 0 {
+			t.Fatalf("active connections = (%d, %d), want (0, 0)", webSocketActive, sseActive)
+		}
+		if records := logRecords(t, output); len(records) != 0 {
+			t.Fatalf("rejected WebSocket emitted connection facts: %s", output.String())
+		}
+	})
+}
+
+func TestSSEWriteFailureClosesOperationalFact(t *testing.T) {
+	logger, output := newTestLogger()
+	var stats connectionStats
+	writer := &failingFlusherWriter{header: make(http.Header)}
+	request := httptest.NewRequest(http.MethodGet, "/events", nil)
+
+	events(writer, request, time.Millisecond, logger, &stats)
+
+	if writer.statusCode != http.StatusOK {
+		t.Fatalf("status code = %d, want %d", writer.statusCode, http.StatusOK)
+	}
+	opened := recordsForEvent(logRecords(t, output), "connection.opened")
+	closed := recordsForEvent(logRecords(t, output), "connection.closed")
+	if len(opened) != 1 || opened[0]["protocol_active"] != float64(1) || opened[0]["connection_sequence"] != float64(1) {
+		t.Fatalf("opened facts = %#v, want one active SSE", opened)
+	}
+	if len(closed) != 1 || closed[0]["protocol_active"] != float64(0) || closed[0]["total_active"] != float64(0) || closed[0]["connection_sequence"] != float64(2) {
+		t.Fatalf("closed facts = %#v, want no active connections", closed)
+	}
+	webSocketActive, sseActive, _ := stats.snapshot()
+	if webSocketActive != 0 || sseActive != 0 {
+		t.Fatalf("active connections = (%d, %d), want (0, 0)", webSocketActive, sseActive)
 	}
 }
 
@@ -507,6 +867,83 @@ func TestSSETransportFlushesAndRemainsOpen(t *testing.T) {
 	}
 }
 
+func TestSSEConnectionLogsLifecycle(t *testing.T) {
+	logger, output := newTestLogger()
+	server := httptest.NewServer(newHandlerWithConfig(handlerConfig{
+		logger:      logger,
+		sseInterval: time.Millisecond,
+	}))
+	t.Cleanup(server.Close)
+	ctx, cancel := context.WithCancel(context.Background())
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL+"/events", nil)
+	if err != nil {
+		t.Fatalf("create SSE request: %v", err)
+	}
+	responseValue, err := server.Client().Do(request)
+	if err != nil {
+		t.Fatalf("open SSE stream: %v", err)
+	}
+
+	records := waitForLogEvent(t, output, "connection.opened", 1)
+	opened := records[len(records)-1]
+	if opened["protocol"] != "sse" || opened["protocol_active"] != float64(1) || opened["connection_sequence"] != float64(1) {
+		t.Fatalf("opened SSE log = %#v", opened)
+	}
+	cancel()
+	_ = responseValue.Body.Close()
+	records = waitForLogEvent(t, output, "connection.closed", 1)
+	closed := records[len(records)-1]
+	if closed["protocol"] != "sse" || closed["protocol_active"] != float64(0) || closed["connection_sequence"] != float64(2) {
+		t.Fatalf("closed SSE log = %#v", closed)
+	}
+	if duration, ok := closed["duration_ms"].(float64); !ok || duration < 0 {
+		t.Fatalf("SSE duration_ms = %#v, want a non-negative number", closed["duration_ms"])
+	}
+}
+
+func TestConnectionFactsCombineWebSocketAndSSECounts(t *testing.T) {
+	logger, output := newTestLogger()
+	app := newApplication(handlerConfig{logger: logger, sseInterval: time.Millisecond})
+	server := httptest.NewServer(app.handler)
+	t.Cleanup(server.Close)
+
+	sseCtx, cancelSSE := context.WithCancel(context.Background())
+	sseRequest, err := http.NewRequestWithContext(sseCtx, http.MethodGet, server.URL+"/events", nil)
+	if err != nil {
+		t.Fatalf("create SSE request: %v", err)
+	}
+	sseResponse, err := server.Client().Do(sseRequest)
+	if err != nil {
+		t.Fatalf("open SSE stream: %v", err)
+	}
+	waitForLogEvent(t, output, "connection.opened", 1)
+
+	webSocketConnection, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(server.URL, "http")+"/ws", nil)
+	if err != nil {
+		cancelSSE()
+		_ = sseResponse.Body.Close()
+		t.Fatalf("dial WebSocket: %v", err)
+	}
+	opened := recordsForEvent(waitForLogEvent(t, output, "connection.opened", 2), "connection.opened")
+	if opened[1]["protocol"] != "websocket" || opened[1]["protocol_active"] != float64(1) || opened[1]["total_active"] != float64(2) || opened[1]["connection_sequence"] != float64(2) {
+		t.Fatalf("combined open log = %#v, want first WebSocket and two total connections", opened[1])
+	}
+
+	cancelSSE()
+	_ = sseResponse.Body.Close()
+	closed := recordsForEvent(waitForLogEvent(t, output, "connection.closed", 1), "connection.closed")
+	if closed[0]["protocol"] != "sse" || closed[0]["protocol_active"] != float64(0) || closed[0]["total_active"] != float64(1) || closed[0]["connection_sequence"] != float64(3) {
+		t.Fatalf("SSE close log = %#v, want one WebSocket remaining", closed[0])
+	}
+	if err := webSocketConnection.Close(); err != nil {
+		t.Fatalf("close WebSocket: %v", err)
+	}
+	closed = recordsForEvent(waitForLogEvent(t, output, "connection.closed", 2), "connection.closed")
+	if closed[1]["protocol"] != "websocket" || closed[1]["protocol_active"] != float64(0) || closed[1]["total_active"] != float64(0) || closed[1]["connection_sequence"] != float64(4) {
+		t.Fatalf("WebSocket close log = %#v, want no active connections", closed[1])
+	}
+}
+
 func TestWebSocketEchoAndBroadcast(t *testing.T) {
 	server := httptest.NewServer(newHandler())
 	t.Cleanup(server.Close)
@@ -537,6 +974,33 @@ func TestWebSocketEchoAndBroadcast(t *testing.T) {
 				t.Fatalf("unexpected WebSocket message: %#v", message)
 			}
 		})
+	}
+}
+
+func TestWebSocketConnectionLogsLifecycle(t *testing.T) {
+	logger, output := newTestLogger()
+	server := httptest.NewServer(newHandlerWithConfig(handlerConfig{logger: logger}))
+	t.Cleanup(server.Close)
+	connection, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(server.URL, "http")+"/ws", nil)
+	if err != nil {
+		t.Fatalf("dial WebSocket: %v", err)
+	}
+
+	records := waitForLogEvent(t, output, "connection.opened", 1)
+	opened := records[len(records)-1]
+	if opened["protocol"] != "websocket" || opened["protocol_active"] != float64(1) || opened["connection_sequence"] != float64(1) {
+		t.Fatalf("opened WebSocket log = %#v", opened)
+	}
+	if err := connection.Close(); err != nil {
+		t.Fatalf("close WebSocket: %v", err)
+	}
+	records = waitForLogEvent(t, output, "connection.closed", 1)
+	closed := records[len(records)-1]
+	if closed["protocol"] != "websocket" || closed["protocol_active"] != float64(0) || closed["connection_sequence"] != float64(2) {
+		t.Fatalf("closed WebSocket log = %#v", closed)
+	}
+	if duration, ok := closed["duration_ms"].(float64); !ok || duration < 0 {
+		t.Fatalf("WebSocket duration_ms = %#v, want a non-negative number", closed["duration_ms"])
 	}
 }
 

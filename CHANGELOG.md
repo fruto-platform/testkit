@@ -7,7 +7,14 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-No changes yet.
+### Added
+
+- Structured JSON logs for server lifecycle, REST request completion, and
+  WebSocket and SSE connection lifecycle.
+- Per-process active connection snapshots every 15 minutes while at least one
+  WebSocket or SSE connection is active.
+- Monotonic per-process connection sequences so concurrent lifecycle facts can
+  be reconstructed in transition order.
 
 ## [0.2.0] - 2026-08-24
 

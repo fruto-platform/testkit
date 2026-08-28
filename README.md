@@ -174,6 +174,28 @@ connections are rejected.
 
 Invalid or non-positive `SSE_INTERVAL` values fall back to the default.
 
+## Structured logs
+
+Server mode writes newline-delimited JSON logs to standard output. Every record
+includes `service` and `version`. The primary `event` values are:
+
+- `server.started`, `server.stopped`, and server failure events;
+- `http.request.completed` for `/api/status`, `/api/items`, and `/api/echo`, with
+  method, stable route, status code, duration in milliseconds, and response bytes;
+- `connection.opened` and `connection.closed` for WebSocket and SSE, with the
+  active protocol and total connection counts and connection duration on close;
+- `connections.snapshot` every 15 minutes while at least one connection is active.
+
+Connection lifecycle events and snapshots include `connection_sequence`, which
+increases with every connection state transition in the process. Consumers can
+use it to reconstruct transition order when concurrent log records arrive out of
+order.
+
+Connection counts are local to one process and reset on restart. Logs do not
+include client addresses, headers, query strings, request payloads, WebSocket
+messages, or SSE data. They are observable test facts, not durable or global
+metrics.
+
 ## Image distribution
 
 Tagged releases publish multi-platform images to GitHub Container Registry:
