@@ -201,7 +201,7 @@ metrics.
 Tagged releases publish multi-platform images to GitHub Container Registry:
 
 ```text
-ghcr.io/molejo-platform/testkit:v0.1.1
+ghcr.io/molejo-platform/testkit:v0.3.0
 ```
 
 Tags are provided for discovery. Automated tests should consume the immutable
