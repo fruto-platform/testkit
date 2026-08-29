@@ -80,7 +80,7 @@ curl --fail http://localhost:8080/api/status
 Expected response:
 
 ```json
-{"status":"ok","version":"v0.7.0"}
+{"status":"ok","version":"v0.7.1"}
 ```
 
 ## Browser console
@@ -128,7 +128,7 @@ Each connected WebSocket client receives the broadcast message with the current
 build version:
 
 ```json
-{"message":"hello","version":"v0.7.0"}
+{"message":"hello","version":"v0.7.1"}
 ```
 
 ## Network probe
@@ -277,7 +277,7 @@ by server shutdown do not replace the last observed peer state.
 Tagged releases publish multi-platform images to GitHub Container Registry:
 
 ```text
-ghcr.io/molejo-platform/testkit:v0.7.0
+ghcr.io/molejo-platform/testkit:v0.7.1
 ```
 
 Tags are provided for discovery. Automated tests should consume the immutable

@@ -80,7 +80,7 @@ curl --fail http://localhost:8080/api/status
 Resposta esperada:
 
 ```json
-{"status":"ok","version":"v0.7.0"}
+{"status":"ok","version":"v0.7.1"}
 ```
 
 ## Console no navegador
@@ -129,7 +129,7 @@ Cada cliente WebSocket conectado recebe a mensagem de broadcast com a versão de
 build atual:
 
 ```json
-{"message":"hello","version":"v0.7.0"}
+{"message":"hello","version":"v0.7.1"}
 ```
 
 ## Probe de rede
@@ -281,7 +281,7 @@ Releases versionadas publicam imagens multiplataforma no GitHub Container
 Registry:
 
 ```text
-ghcr.io/molejo-platform/testkit:v0.7.0
+ghcr.io/molejo-platform/testkit:v0.7.1
 ```
 
 As tags existem para descoberta. Testes automatizados devem consumir o digest

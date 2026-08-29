@@ -9,6 +9,14 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 No changes yet.
 
+## [0.7.1] - 2026-08-29
+
+### Fixed
+
+- Browser pages now reference embedded CSS and JavaScript through
+  content-addressed paths, revalidate HTML, and prevent legacy asset responses
+  from being cached, avoiding mismatched frontend code across releases.
+
 ## [0.7.0] - 2026-08-29
 
 ### Changed
@@ -146,7 +154,8 @@ No changes yet.
 
 - Initial multi-platform image publication workflow for GitHub Container Registry.
 
-[Unreleased]: https://github.com/molejo-platform/testkit/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/molejo-platform/testkit/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/molejo-platform/testkit/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/molejo-platform/testkit/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/molejo-platform/testkit/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/molejo-platform/testkit/compare/v0.5.0...v0.6.0
