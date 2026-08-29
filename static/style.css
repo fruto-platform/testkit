@@ -585,6 +585,7 @@ h2 {
 }
 
 .button:focus-visible,
+.preset-button:focus-visible,
 input:focus-visible,
 a:focus-visible {
   outline: 3px solid rgb(142 184 255 / 0.7);
@@ -613,8 +614,10 @@ a:focus-visible {
   color: var(--ink);
 }
 
-.button:disabled {
+.button:disabled,
+.preset-button:disabled {
   opacity: 0.42;
+  cursor: not-allowed;
 }
 
 .message-form label {
@@ -788,17 +791,18 @@ input:disabled {
 }
 
 .preset-button {
-  min-height: 42px;
+  min-height: 44px;
   padding: 0.55rem 0.7rem;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--ink-soft);
+  cursor: pointer;
   text-align: left;
   transition: background 180ms ease, border-color 180ms ease, color 180ms ease;
 }
 
-.preset-button:hover,
+.preset-button:not(:disabled):hover,
 .preset-button--active {
   border-color: rgb(142 216 193 / 0.55);
   background: rgb(142 216 193 / 0.1);
@@ -829,6 +833,16 @@ input:disabled {
 .stream-card__header code {
   color: var(--blue);
   font-size: 0.76rem;
+}
+
+.lab-output__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.lab-output__header-actions .button {
+  min-width: 8.5rem;
 }
 
 .lab-result-status {
@@ -882,6 +896,7 @@ input:disabled {
 }
 
 .lab-output__footer {
+  flex-wrap: wrap;
   padding: 0.75rem 1.1rem;
   border-top: 1px solid var(--line);
   color: var(--ink-muted);
@@ -892,6 +907,7 @@ input:disabled {
   color: var(--ink-soft);
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-weight: 500;
+  overflow-wrap: anywhere;
 }
 
 .stream-card {
@@ -1074,6 +1090,15 @@ input:disabled {
   .lab-layout,
   .lab-output__grid {
     grid-template-columns: 1fr;
+  }
+
+  .lab-output__header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .lab-output__header-actions {
+    justify-content: space-between;
   }
 
   .lab-section {

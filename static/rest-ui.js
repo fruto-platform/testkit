@@ -19,35 +19,104 @@ export function mountRestLab(root, {
   translate = (key) => key,
   fetchImpl = globalThis.fetch,
   createCorrelationIDImpl = createCorrelationID,
+  now = () => globalThis.performance.now(),
 } = {}) {
   const buttons = [...root.querySelectorAll("[data-rest-preset]")];
+  const sendButton = root.querySelector("[data-rest-send]");
+  const output = root.querySelector("[data-rest-output]");
   const requestLine = root.querySelector("[data-rest-request-line]");
   const status = root.querySelector("[data-rest-status]");
   const requestOutput = root.querySelector("[data-rest-request]");
   const responseOutput = root.querySelector("[data-rest-response]");
   const duration = root.querySelector("[data-rest-duration]");
+  const size = root.querySelector("[data-rest-size]");
   const contentType = root.querySelector("[data-rest-content-type]");
+  const version = root.querySelector("[data-rest-version]");
+  const correlationIDOutput = root.querySelector("[data-rest-correlation-id]");
   const hint = root.querySelector("[data-rest-hint]");
+  let selectedName = buttons.find((button) => button.className.includes("preset-button--active"))?.dataset.restPreset || "status";
+  let running = false;
 
-  async function run(name) {
+  function requestDetails(preset, correlationID) {
+    const request = { method: preset.method, path: preset.path };
+    if (correlationID) request.correlation_id = correlationID;
+    if (preset.body) {
+      try {
+        request.body = JSON.parse(preset.body);
+      } catch {
+        request.body = preset.body;
+      }
+    }
+    return request;
+  }
+
+  function clearResponse() {
+    responseOutput.textContent = translate("rest.run_to_see");
+    status.className = "lab-result-status";
+    status.textContent = translate("lab.waiting");
+    status.setAttribute("role", "status");
+    hint.textContent = translate("rest.ready");
+    duration.textContent = "—";
+    size.textContent = "—";
+    contentType.textContent = "—";
+    version.textContent = "—";
+    correlationIDOutput.textContent = "—";
+  }
+
+  function select(name) {
     const preset = presets[name];
-    if (!preset) return;
+    if (!preset || running) return;
 
-    for (const button of buttons) button.className = `preset-button${button.dataset.restPreset === name ? " preset-button--active" : ""}`;
-    const correlationID = createCorrelationIDImpl();
-    const request = { method: preset.method, path: preset.path, correlation_id: correlationID };
-    if (preset.body) request.body = preset.body;
+    selectedName = name;
+    for (const button of buttons) {
+      const selected = button.dataset.restPreset === name;
+      button.className = `preset-button${selected ? " preset-button--active" : ""}`;
+      button.setAttribute("aria-pressed", String(selected));
+    }
     requestLine.textContent = `${preset.method} ${preset.path}`;
-    requestOutput.textContent = JSON.stringify(request, null, 2);
+    requestOutput.textContent = JSON.stringify(requestDetails(preset), null, 2);
+    clearResponse();
+  }
+
+  function setRunning(nextRunning) {
+    running = nextRunning;
+    sendButton.disabled = nextRunning;
+    sendButton.textContent = translate(nextRunning ? "rest.sending" : "rest.send");
+    output.setAttribute("aria-busy", String(nextRunning));
+    for (const button of buttons) button.disabled = nextRunning;
+  }
+
+  function durationSince(started) {
+    if (started === undefined) return "—";
+    try {
+      return `${Math.max(0, Math.round(now() - started))} ms`;
+    } catch {
+      return "—";
+    }
+  }
+
+  async function run() {
+    const preset = presets[selectedName];
+    if (!preset || running) return;
+
+    setRunning(true);
     responseOutput.textContent = translate("lab.running");
     status.className = "lab-result-status lab-result-status--running";
     status.textContent = translate("lab.running");
+    status.setAttribute("role", "status");
     hint.textContent = translate("rest.running");
     duration.textContent = "—";
+    size.textContent = "—";
     contentType.textContent = "—";
+    version.textContent = "—";
+    correlationIDOutput.textContent = "—";
 
-    const started = Date.now();
+    let started;
     try {
+      started = now();
+      const correlationID = createCorrelationIDImpl();
+      requestOutput.textContent = JSON.stringify(requestDetails(preset, correlationID), null, 2);
+      correlationIDOutput.textContent = correlationID;
       const headers = { "X-Testkit-Correlation-ID": correlationID };
       if (preset.body) headers["Content-Type"] = "application/json";
       const response = await fetchImpl(preset.path, {
@@ -56,22 +125,38 @@ export function mountRestLab(root, {
         body: preset.body,
       });
       const body = await response.text();
-      duration.textContent = `${Date.now() - started} ms`;
+      duration.textContent = durationSince(started);
+      size.textContent = `${new TextEncoder().encode(body).byteLength} B`;
       contentType.textContent = response.headers.get("content-type") || translate("lab.not_available");
+      version.textContent = response.headers.get("testkit-version") || translate("lab.not_available");
+      correlationIDOutput.textContent = response.headers.get("x-testkit-correlation-id") || correlationID;
       responseOutput.textContent = formatJSON(body);
       status.className = `lab-result-status ${response.ok ? "lab-result-status--ok" : "lab-result-status--error"}`;
-      status.textContent = `${response.status} ${response.statusText}`;
+      status.textContent = [response.status, response.statusText].filter(Boolean).join(" ");
       hint.textContent = response.ok ? translate("rest.completed") : translate("rest.failed");
     } catch (error) {
-      duration.textContent = `${Date.now() - started} ms`;
+      duration.textContent = durationSince(started);
       responseOutput.textContent = String(error);
       status.className = "lab-result-status lab-result-status--error";
       status.textContent = translate("lab.network_error");
-      hint.textContent = translate("rest.failed");
+      status.setAttribute("role", "alert");
+      hint.textContent = translate("rest.network_failed");
+    } finally {
+      setRunning(false);
     }
   }
 
-  for (const button of buttons) button.addEventListener("click", () => run(button.dataset.restPreset));
+  for (const button of buttons) button.addEventListener("click", () => select(button.dataset.restPreset));
+  sendButton.addEventListener("click", run);
+  root.addEventListener("keydown", (event) => {
+    if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+      event.preventDefault();
+      run();
+    }
+  });
+
+  output.setAttribute("aria-busy", "false");
+  select(selectedName);
 }
 
 export { presets as restPresets };

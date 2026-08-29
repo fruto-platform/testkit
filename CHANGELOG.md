@@ -7,7 +7,11 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-No changes yet.
+### Changed
+
+- The REST browser lab now separates preset selection from request execution,
+  provides an explicit send action with duplicate-submit protection, and shows
+  response duration, size, content type, version, and correlation ID.
 
 ## [0.6.1] - 2026-08-29
 
