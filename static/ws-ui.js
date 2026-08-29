@@ -34,7 +34,7 @@ function messageFromPayload(payload) {
   return payload && typeof payload.message === "string" ? payload.message : JSON.stringify(payload);
 }
 
-export function mountWebSocketClient(root, { locale = "en", translate = (key) => key } = {}) {
+export function mountWebSocketClient(root, { locale = "en", translate = (key) => key, createCorrelationIDImpl } = {}) {
   const connectButton = root.querySelector("[data-ws-connect]");
   const disconnectButton = root.querySelector("[data-ws-disconnect]");
   const form = root.querySelector("[data-ws-form]");
@@ -63,6 +63,7 @@ export function mountWebSocketClient(root, { locale = "en", translate = (key) =>
     url: root.dataset.wsUrl,
     onStateChange: ({ state, detail }) => updateState(state, detail),
     onEvent: (event) => handleEvent(event),
+    createCorrelationIDImpl,
   });
 
   function updateState(state, detail = {}) {

@@ -3,7 +3,9 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"embed"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -34,6 +36,8 @@ const (
 	writeWait                = 10 * time.Second
 	pongWait                 = 60 * time.Second
 	pingPeriod               = (pongWait * 9) / 10
+	correlationHeader        = "X-Testkit-Correlation-ID"
+	correlationQuery         = "correlation_id"
 )
 
 // webFiles is embedded so the final scratch image needs no filesystem asset.
@@ -390,6 +394,8 @@ func (writer *responseLogWriter) Write(data []byte) (int, error) {
 func logHTTPRequest(logger *slog.Logger, route string, handler http.HandlerFunc) http.HandlerFunc {
 	return func(writer http.ResponseWriter, request *http.Request) {
 		started := time.Now()
+		correlationID := resolveCorrelationID(request.Header.Get(correlationHeader))
+		writer.Header().Set(correlationHeader, correlationID)
 		logWriter := &responseLogWriter{ResponseWriter: writer}
 		handler(logWriter, request)
 		statusCode := logWriter.statusCode
@@ -403,8 +409,45 @@ func logHTTPRequest(logger *slog.Logger, route string, handler http.HandlerFunc)
 			"status_code", statusCode,
 			"duration_ms", durationMilliseconds(time.Since(started)),
 			"response_bytes", logWriter.bytes,
+			"correlation_id", correlationID,
 		)
 	}
+}
+
+func resolveCorrelationID(value string) string {
+	if isUUIDv7(value) {
+		return strings.ToLower(value)
+	}
+	return newUUIDv7()
+}
+
+func isUUIDv7(value string) bool {
+	if len(value) != 36 || value[8] != '-' || value[13] != '-' || value[18] != '-' || value[23] != '-' {
+		return false
+	}
+	encoded := value[:8] + value[9:13] + value[14:18] + value[19:23] + value[24:]
+	decoded, err := hex.DecodeString(encoded)
+	if err != nil {
+		return false
+	}
+	return decoded[6]>>4 == 7 && decoded[8]&0xc0 == 0x80
+}
+
+func newUUIDv7() string {
+	var id [16]byte
+	if _, err := rand.Read(id[:]); err != nil {
+		panic(fmt.Errorf("generate correlation ID: %w", err))
+	}
+	milliseconds := uint64(time.Now().UnixMilli())
+	id[0] = byte(milliseconds >> 40)
+	id[1] = byte(milliseconds >> 32)
+	id[2] = byte(milliseconds >> 24)
+	id[3] = byte(milliseconds >> 16)
+	id[4] = byte(milliseconds >> 8)
+	id[5] = byte(milliseconds)
+	id[6] = id[6]&0x0f | 0x70
+	id[8] = id[8]&0x3f | 0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", id[:4], id[4:6], id[6:8], id[8:10], id[10:])
 }
 
 func durationMilliseconds(duration time.Duration) float64 {
@@ -692,7 +735,7 @@ func newGraphQLSchema() graphql.Schema {
 	return schema
 }
 
-func observeConnection(ctx context.Context, logger *slog.Logger, stats *connectionStats, protocol, route string) func() {
+func observeConnection(ctx context.Context, logger *slog.Logger, stats *connectionStats, protocol, route, correlationID string) func() {
 	started := time.Now()
 	protocolActive, totalActive, sequence := stats.change(protocol, 1)
 	logger.InfoContext(ctx, "connection opened",
@@ -702,6 +745,7 @@ func observeConnection(ctx context.Context, logger *slog.Logger, stats *connecti
 		"protocol_active", protocolActive,
 		"total_active", totalActive,
 		"connection_sequence", sequence,
+		"correlation_id", correlationID,
 	)
 	return func() {
 		protocolActive, totalActive, sequence := stats.change(protocol, -1)
@@ -713,6 +757,7 @@ func observeConnection(ctx context.Context, logger *slog.Logger, stats *connecti
 			"total_active", totalActive,
 			"connection_sequence", sequence,
 			"duration_ms", durationMilliseconds(time.Since(started)),
+			"correlation_id", correlationID,
 		)
 	}
 }
@@ -728,7 +773,8 @@ func events(writer http.ResponseWriter, request *http.Request, interval time.Dur
 	writer.Header().Set("Connection", "keep-alive")
 	writer.Header().Set("X-Accel-Buffering", "no")
 	writer.WriteHeader(http.StatusOK)
-	connectionClosed := observeConnection(request.Context(), logger, stats, protocolSSE, "/events")
+	correlationID := resolveCorrelationID(request.URL.Query().Get(correlationQuery))
+	connectionClosed := observeConnection(request.Context(), logger, stats, protocolSSE, "/events", correlationID)
 	defer connectionClosed()
 
 	ticker := time.NewTicker(interval)
@@ -846,7 +892,8 @@ func webSocket(writer http.ResponseWriter, request *http.Request, hub *webSocket
 		_ = connection.Close()
 		return
 	}
-	connectionClosed := observeConnection(request.Context(), logger, stats, protocolWebSocket, "/ws")
+	correlationID := resolveCorrelationID(request.URL.Query().Get(correlationQuery))
+	connectionClosed := observeConnection(request.Context(), logger, stats, protocolWebSocket, "/ws", correlationID)
 	defer func() {
 		client.hub.unregister(client)
 		_ = connection.Close()

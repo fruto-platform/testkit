@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -18,6 +20,10 @@ import (
 
 	"github.com/gorilla/websocket"
 )
+
+const suppliedCorrelationID = "018f47de-1234-7abc-8def-0123456789ab"
+
+var uuidV7Pattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
 
 type lockedBuffer struct {
 	mutex sync.Mutex
@@ -107,6 +113,49 @@ func recordsForEvent(records []map[string]interface{}, event string) []map[strin
 	return matches
 }
 
+func requireUUIDv7(t *testing.T, value string) {
+	t.Helper()
+	if !uuidV7Pattern.MatchString(value) {
+		t.Fatalf("correlation ID = %q, want a canonical UUIDv7", value)
+	}
+}
+
+func TestCorrelationIDValidation(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		value string
+		valid bool
+	}{
+		{name: "canonical UUIDv7", value: suppliedCorrelationID, valid: true},
+		{name: "uppercase", value: strings.ToUpper(suppliedCorrelationID), valid: true},
+		{name: "mixed case", value: "018F47de-1234-7Abc-8deF-0123456789aB", valid: true},
+		{name: "UUIDv4", value: "018f47de-1234-4abc-8def-0123456789ab"},
+		{name: "invalid variant", value: "018f47de-1234-7abc-7def-0123456789ab"},
+		{name: "arbitrary value", value: "do-not-log"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := isUUIDv7(test.value); got != test.valid {
+				t.Fatalf("isUUIDv7(%q) = %t, want %t", test.value, got, test.valid)
+			}
+		})
+	}
+}
+
+func TestGeneratedUUIDv7CarriesCurrentUnixTime(t *testing.T) {
+	before := time.Now().UnixMilli()
+	correlationID := newUUIDv7()
+	after := time.Now().UnixMilli()
+
+	requireUUIDv7(t, correlationID)
+	timestamp, err := strconv.ParseInt(correlationID[:8]+correlationID[9:13], 16, 64)
+	if err != nil {
+		t.Fatalf("parse UUIDv7 timestamp: %v", err)
+	}
+	if timestamp < before || timestamp > after {
+		t.Fatalf("UUIDv7 timestamp = %d, want between %d and %d", timestamp, before, after)
+	}
+}
+
 func TestHandlerRoutes(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -183,6 +232,85 @@ func TestRESTRequestLog(t *testing.T) {
 	}
 }
 
+func TestRESTCorrelationID(t *testing.T) {
+	t.Run("uses valid client value", func(t *testing.T) {
+		logger, output := newTestLogger()
+		request := httptest.NewRequest(http.MethodGet, "/api/status", nil)
+		request.Header.Set("X-Testkit-Correlation-ID", suppliedCorrelationID)
+		responseRecorder := httptest.NewRecorder()
+
+		newHandlerWithConfig(handlerConfig{logger: logger}).ServeHTTP(responseRecorder, request)
+
+		if got := responseRecorder.Header().Get("X-Testkit-Correlation-ID"); got != suppliedCorrelationID {
+			t.Fatalf("response correlation ID = %q, want %q", got, suppliedCorrelationID)
+		}
+		records := logRecords(t, output)
+		if len(records) != 1 || records[0]["correlation_id"] != suppliedCorrelationID {
+			t.Fatalf("request facts = %#v, want supplied correlation ID", records)
+		}
+	})
+
+	t.Run("normalizes valid uppercase value", func(t *testing.T) {
+		logger, output := newTestLogger()
+		request := httptest.NewRequest(http.MethodGet, "/api/status", nil)
+		request.Header.Set("X-Testkit-Correlation-ID", strings.ToUpper(suppliedCorrelationID))
+		responseRecorder := httptest.NewRecorder()
+
+		newHandlerWithConfig(handlerConfig{logger: logger}).ServeHTTP(responseRecorder, request)
+
+		if got := responseRecorder.Header().Get("X-Testkit-Correlation-ID"); got != suppliedCorrelationID {
+			t.Fatalf("response correlation ID = %q, want normalized %q", got, suppliedCorrelationID)
+		}
+		records := logRecords(t, output)
+		if len(records) != 1 || records[0]["correlation_id"] != suppliedCorrelationID {
+			t.Fatalf("request facts = %#v, want normalized correlation ID", records)
+		}
+	})
+
+	t.Run("generates distinct values when absent", func(t *testing.T) {
+		logger, output := newTestLogger()
+		seen := make(map[string]bool)
+		for range 2 {
+			request := httptest.NewRequest(http.MethodGet, "/api/status", nil)
+			responseRecorder := httptest.NewRecorder()
+
+			newHandlerWithConfig(handlerConfig{logger: logger}).ServeHTTP(responseRecorder, request)
+
+			correlationID := responseRecorder.Header().Get("X-Testkit-Correlation-ID")
+			requireUUIDv7(t, correlationID)
+			if seen[correlationID] {
+				t.Fatalf("generated duplicate correlation ID %q", correlationID)
+			}
+			seen[correlationID] = true
+		}
+		for _, record := range logRecords(t, output) {
+			correlationID, ok := record["correlation_id"].(string)
+			if !ok || !seen[correlationID] {
+				t.Fatalf("request correlation ID = %#v, want one returned to the client", record["correlation_id"])
+			}
+		}
+	})
+
+	t.Run("replaces invalid client value", func(t *testing.T) {
+		logger, output := newTestLogger()
+		request := httptest.NewRequest(http.MethodGet, "/api/status", nil)
+		request.Header.Set("X-Testkit-Correlation-ID", "do-not-log")
+		responseRecorder := httptest.NewRecorder()
+
+		newHandlerWithConfig(handlerConfig{logger: logger}).ServeHTTP(responseRecorder, request)
+
+		correlationID := responseRecorder.Header().Get("X-Testkit-Correlation-ID")
+		requireUUIDv7(t, correlationID)
+		if strings.Contains(output.String(), "do-not-log") {
+			t.Fatalf("invalid client correlation ID leaked into log: %s", output.String())
+		}
+		records := logRecords(t, output)
+		if len(records) != 1 || records[0]["correlation_id"] != correlationID {
+			t.Fatalf("request facts = %#v, want generated correlation ID %q", records, correlationID)
+		}
+	})
+}
+
 func TestRESTRequestFactsCoverFailuresAndRedaction(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -256,7 +384,7 @@ func TestConcurrentConnectionFactsCarryTransitionOrder(t *testing.T) {
 		go func() {
 			defer waitGroup.Done()
 			<-start
-			connections <- observeConnection(context.Background(), logger, &stats, protocolWebSocket, "/ws")
+			connections <- observeConnection(context.Background(), logger, &stats, protocolWebSocket, "/ws", newUUIDv7())
 		}()
 	}
 	close(start)
@@ -307,6 +435,9 @@ func TestActiveConnectionSnapshotSkipsEmptyState(t *testing.T) {
 	record := records[len(records)-1]
 	if record["websocket_active"] != float64(0) || record["sse_active"] != float64(1) || record["total_active"] != float64(1) || record["connection_sequence"] != float64(1) {
 		t.Fatalf("snapshot log = %#v, want one active SSE", record)
+	}
+	if _, ok := record["correlation_id"]; ok {
+		t.Fatalf("aggregate snapshot contains a connection correlation ID: %#v", record)
 	}
 }
 
@@ -428,6 +559,7 @@ func TestStaticAssets(t *testing.T) {
 	}{
 		{path: "/static/style.css", contentType: "text/css; charset=utf-8", contains: "font-family"},
 		{path: "/static/app.js", contentType: "text/javascript; charset=utf-8", contains: "mountWebSocketClient"},
+		{path: "/static/correlation-id.js", contentType: "text/javascript; charset=utf-8", contains: "createCorrelationID"},
 	} {
 		t.Run(test.path, func(t *testing.T) {
 			request := httptest.NewRequest(http.MethodGet, test.path, nil)
@@ -875,7 +1007,8 @@ func TestSSEConnectionLogsLifecycle(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 	ctx, cancel := context.WithCancel(context.Background())
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL+"/events", nil)
+	t.Cleanup(cancel)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL+"/events?correlation_id="+suppliedCorrelationID, nil)
 	if err != nil {
 		t.Fatalf("create SSE request: %v", err)
 	}
@@ -883,17 +1016,18 @@ func TestSSEConnectionLogsLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open SSE stream: %v", err)
 	}
+	t.Cleanup(func() { _ = responseValue.Body.Close() })
 
 	records := waitForLogEvent(t, output, "connection.opened", 1)
 	opened := records[len(records)-1]
-	if opened["protocol"] != "sse" || opened["protocol_active"] != float64(1) || opened["connection_sequence"] != float64(1) {
+	if opened["protocol"] != "sse" || opened["protocol_active"] != float64(1) || opened["connection_sequence"] != float64(1) || opened["correlation_id"] != suppliedCorrelationID {
 		t.Fatalf("opened SSE log = %#v", opened)
 	}
 	cancel()
 	_ = responseValue.Body.Close()
 	records = waitForLogEvent(t, output, "connection.closed", 1)
 	closed := records[len(records)-1]
-	if closed["protocol"] != "sse" || closed["protocol_active"] != float64(0) || closed["connection_sequence"] != float64(2) {
+	if closed["protocol"] != "sse" || closed["protocol_active"] != float64(0) || closed["connection_sequence"] != float64(2) || closed["correlation_id"] != suppliedCorrelationID {
 		t.Fatalf("closed SSE log = %#v", closed)
 	}
 	if duration, ok := closed["duration_ms"].(float64); !ok || duration < 0 {
@@ -908,6 +1042,7 @@ func TestConnectionFactsCombineWebSocketAndSSECounts(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	sseCtx, cancelSSE := context.WithCancel(context.Background())
+	t.Cleanup(cancelSSE)
 	sseRequest, err := http.NewRequestWithContext(sseCtx, http.MethodGet, server.URL+"/events", nil)
 	if err != nil {
 		t.Fatalf("create SSE request: %v", err)
@@ -916,6 +1051,7 @@ func TestConnectionFactsCombineWebSocketAndSSECounts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open SSE stream: %v", err)
 	}
+	t.Cleanup(func() { _ = sseResponse.Body.Close() })
 	waitForLogEvent(t, output, "connection.opened", 1)
 
 	webSocketConnection, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(server.URL, "http")+"/ws", nil)
@@ -924,9 +1060,20 @@ func TestConnectionFactsCombineWebSocketAndSSECounts(t *testing.T) {
 		_ = sseResponse.Body.Close()
 		t.Fatalf("dial WebSocket: %v", err)
 	}
+	t.Cleanup(func() { _ = webSocketConnection.Close() })
 	opened := recordsForEvent(waitForLogEvent(t, output, "connection.opened", 2), "connection.opened")
 	if opened[1]["protocol"] != "websocket" || opened[1]["protocol_active"] != float64(1) || opened[1]["total_active"] != float64(2) || opened[1]["connection_sequence"] != float64(2) {
 		t.Fatalf("combined open log = %#v, want first WebSocket and two total connections", opened[1])
+	}
+	sseCorrelationID, sseOK := opened[0]["correlation_id"].(string)
+	webSocketCorrelationID, webSocketOK := opened[1]["correlation_id"].(string)
+	if !sseOK || !webSocketOK {
+		t.Fatalf("connection facts lack correlation IDs: %#v", opened)
+	}
+	requireUUIDv7(t, sseCorrelationID)
+	requireUUIDv7(t, webSocketCorrelationID)
+	if sseCorrelationID == webSocketCorrelationID {
+		t.Fatalf("SSE and WebSocket share correlation ID %q", sseCorrelationID)
 	}
 
 	cancelSSE()
@@ -981,14 +1128,14 @@ func TestWebSocketConnectionLogsLifecycle(t *testing.T) {
 	logger, output := newTestLogger()
 	server := httptest.NewServer(newHandlerWithConfig(handlerConfig{logger: logger}))
 	t.Cleanup(server.Close)
-	connection, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(server.URL, "http")+"/ws", nil)
+	connection, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(server.URL, "http")+"/ws?correlation_id="+suppliedCorrelationID, nil)
 	if err != nil {
 		t.Fatalf("dial WebSocket: %v", err)
 	}
 
 	records := waitForLogEvent(t, output, "connection.opened", 1)
 	opened := records[len(records)-1]
-	if opened["protocol"] != "websocket" || opened["protocol_active"] != float64(1) || opened["connection_sequence"] != float64(1) {
+	if opened["protocol"] != "websocket" || opened["protocol_active"] != float64(1) || opened["connection_sequence"] != float64(1) || opened["correlation_id"] != suppliedCorrelationID {
 		t.Fatalf("opened WebSocket log = %#v", opened)
 	}
 	if err := connection.Close(); err != nil {
@@ -996,7 +1143,7 @@ func TestWebSocketConnectionLogsLifecycle(t *testing.T) {
 	}
 	records = waitForLogEvent(t, output, "connection.closed", 1)
 	closed := records[len(records)-1]
-	if closed["protocol"] != "websocket" || closed["protocol_active"] != float64(0) || closed["connection_sequence"] != float64(2) {
+	if closed["protocol"] != "websocket" || closed["protocol_active"] != float64(0) || closed["connection_sequence"] != float64(2) || closed["correlation_id"] != suppliedCorrelationID {
 		t.Fatalf("closed WebSocket log = %#v", closed)
 	}
 	if duration, ok := closed["duration_ms"].(float64); !ok || duration < 0 {

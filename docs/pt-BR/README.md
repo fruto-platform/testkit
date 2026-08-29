@@ -193,10 +193,18 @@ a cada transição de estado de conexão no processo. Consumidores podem usá-la
 reconstruir a ordem das transições quando registros concorrentes chegam fora de
 ordem.
 
+Requisições REST concluídas e conexões WebSocket e SSE aceitas incluem um
+`correlation_id` UUIDv7. Clientes REST podem fornecê-lo por
+`X-Testkit-Correlation-ID`; clientes WebSocket e SSE podem usar o parâmetro de
+query `correlation_id`. Valores ausentes ou inválidos são substituídos por um ID
+gerado pelo servidor. Respostas REST devolvem o ID efetivo no mesmo header.
+Os labs REST, WebSocket e SSE incluídos geram e exibem esses IDs automaticamente.
+Snapshots de conexões permanecem agregados e não incluem IDs de correlação.
+
 As quantidades de conexões são locais a um processo e zeram no restart. Os logs
-não incluem endereços de clientes, headers, query strings, payloads das
-requisições, mensagens WebSocket nem dados SSE. São fatos de teste observáveis,
-não métricas duráveis ou globais.
+não incluem endereços de clientes, headers brutos, query strings brutas, payloads
+das requisições, mensagens WebSocket nem dados SSE. São fatos de teste
+observáveis, não métricas duráveis ou globais.
 
 ## Distribuição da imagem
 

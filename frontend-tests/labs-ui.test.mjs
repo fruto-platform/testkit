@@ -50,6 +50,8 @@ const { mountRestLab, restPresets } = await import("../static/rest-ui.js");
 const { mountGraphQLLab, graphQLPresets } = await import("../static/graphql-ui.js");
 const { mountSSELab } = await import("../static/sse-ui.js");
 
+const browserCorrelationID = "018f47de-1234-7abc-8def-0123456789ab";
+
 function rootFor(selectors, collections = {}) {
   const root = new FakeElement();
   root.controls = new Map(Object.entries(selectors));
@@ -93,13 +95,15 @@ test("REST presets send the existing contracts and render responses", async () =
     };
   };
 
-  mountRestLab(root, { fetchImpl, translate: labTranslator });
+  mountRestLab(root, { fetchImpl, translate: labTranslator, createCorrelationIDImpl: () => browserCorrelationID });
   root.collections.get("[data-rest-preset]")[2].dispatch("click");
   await new Promise((resolve) => setImmediate(resolve));
 
   assert.equal(restPresets.echo.method, "POST");
   assert.equal(calls[0].path, "/api/echo");
   assert.deepEqual(JSON.parse(calls[0].options.body), { hello: "world" });
+  assert.equal(calls[0].options.headers["X-Testkit-Correlation-ID"], browserCorrelationID);
+  assert.equal(JSON.parse(root.controls.get("[data-rest-request]").textContent).correlation_id, browserCorrelationID);
   assert.equal(root.controls.get("[data-rest-status]").textContent, "200 OK");
   assert.match(root.controls.get("[data-rest-response]").textContent, /"status": "ok"/);
 });
@@ -194,14 +198,19 @@ test("SSE connects, renders named events and only reconnects explicitly", () => 
   root.dataset.sseUrl = "/events";
   root.controls.get("[data-sse-events]").append(root.controls.get("[data-sse-empty]"));
 
-  mountSSELab(root, { EventSourceImpl: FakeEventSource, translate: labTranslator });
+  mountSSELab(root, {
+    EventSourceImpl: FakeEventSource,
+    translate: labTranslator,
+    createCorrelationIDImpl: () => browserCorrelationID,
+  });
   connect.dispatch("click");
   const source = FakeEventSource.instances[0];
-  assert.equal(source.url, "/events");
+  assert.equal(source.url, `/events?correlation_id=${browserCorrelationID}`);
   source.emit("open");
   source.emit("status", { lastEventId: "7", type: "status", data: '{"status":"ok"}' });
 
   assert.equal(root.controls.get("[data-sse-status-text]").textContent, "sse.connected");
+  assert.match(root.controls.get("[data-sse-hint]").textContent, new RegExp(browserCorrelationID));
   assert.equal(root.controls.get("[data-sse-count]").textContent, "1");
   assert.match(root.controls.get("[data-sse-events]").children[1].children[1].textContent, /"status": "ok"/);
 

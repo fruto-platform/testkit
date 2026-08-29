@@ -1,3 +1,5 @@
+import { createCorrelationID } from "./correlation-id.js";
+
 const presets = {
   status: { method: "GET", path: "/api/status" },
   items: { method: "GET", path: "/api/items" },
@@ -13,7 +15,11 @@ function formatJSON(value) {
   }
 }
 
-export function mountRestLab(root, { translate = (key) => key, fetchImpl = globalThis.fetch } = {}) {
+export function mountRestLab(root, {
+  translate = (key) => key,
+  fetchImpl = globalThis.fetch,
+  createCorrelationIDImpl = createCorrelationID,
+} = {}) {
   const buttons = [...root.querySelectorAll("[data-rest-preset]")];
   const requestLine = root.querySelector("[data-rest-request-line]");
   const status = root.querySelector("[data-rest-status]");
@@ -28,7 +34,8 @@ export function mountRestLab(root, { translate = (key) => key, fetchImpl = globa
     if (!preset) return;
 
     for (const button of buttons) button.className = `preset-button${button.dataset.restPreset === name ? " preset-button--active" : ""}`;
-    const request = { method: preset.method, path: preset.path };
+    const correlationID = createCorrelationIDImpl();
+    const request = { method: preset.method, path: preset.path, correlation_id: correlationID };
     if (preset.body) request.body = preset.body;
     requestLine.textContent = `${preset.method} ${preset.path}`;
     requestOutput.textContent = JSON.stringify(request, null, 2);
@@ -41,9 +48,11 @@ export function mountRestLab(root, { translate = (key) => key, fetchImpl = globa
 
     const started = Date.now();
     try {
+      const headers = { "X-Testkit-Correlation-ID": correlationID };
+      if (preset.body) headers["Content-Type"] = "application/json";
       const response = await fetchImpl(preset.path, {
         method: preset.method,
-        headers: preset.body ? { "Content-Type": "application/json" } : undefined,
+        headers,
         body: preset.body,
       });
       const body = await response.text();

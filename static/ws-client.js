@@ -1,6 +1,8 @@
+import { createCorrelationID } from "./correlation-id.js";
+
 const OPEN = 1;
 
-export function createWebSocketClient({ url, onEvent, onStateChange }) {
+export function createWebSocketClient({ url, onEvent, onStateChange, createCorrelationIDImpl = createCorrelationID }) {
   let socket = null;
 
   function emit(type, detail = {}) {
@@ -18,8 +20,10 @@ export function createWebSocketClient({ url, onEvent, onStateChange }) {
 
     const endpoint = new URL(url, window.location.href);
     endpoint.protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const correlationID = createCorrelationIDImpl();
+    endpoint.searchParams.set("correlation_id", correlationID);
     setState("connecting");
-    emit("connection.connecting", { url: endpoint.toString() });
+    emit("connection.connecting", { url: endpoint.toString(), correlation_id: correlationID });
 
     const connection = new WebSocket(endpoint.toString());
     socket = connection;
@@ -27,7 +31,7 @@ export function createWebSocketClient({ url, onEvent, onStateChange }) {
     connection.addEventListener("open", () => {
       if (socket !== connection) return;
       setState("connected");
-      emit("connection.open", { url: endpoint.toString() });
+      emit("connection.open", { url: endpoint.toString(), correlation_id: correlationID });
     });
 
     connection.addEventListener("message", (event) => {
@@ -56,6 +60,7 @@ export function createWebSocketClient({ url, onEvent, onStateChange }) {
         code: event.code,
         reason: event.reason || "No reason provided",
         clean: event.wasClean,
+        correlation_id: correlationID,
       });
     });
   }

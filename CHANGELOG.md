@@ -7,7 +7,11 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-No changes yet.
+### Added
+
+- UUIDv7 correlation IDs for completed REST requests and accepted WebSocket and
+  SSE connections, with validated client propagation, safe server fallback, and
+  automatic generation and display in the bundled browser labs.
 
 ## [0.3.0] - 2026-08-28
 

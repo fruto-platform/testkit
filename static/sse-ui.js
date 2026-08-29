@@ -1,3 +1,5 @@
+import { createCorrelationID } from "./correlation-id.js";
+
 const MAX_EVENTS = 50;
 
 function formatData(data) {
@@ -8,7 +10,12 @@ function formatData(data) {
   }
 }
 
-export function mountSSELab(root, { locale = "en", translate = (key) => key, EventSourceImpl = globalThis.EventSource } = {}) {
+export function mountSSELab(root, {
+  locale = "en",
+  translate = (key) => key,
+  EventSourceImpl = globalThis.EventSource,
+  createCorrelationIDImpl = createCorrelationID,
+} = {}) {
   const connectButton = root.querySelector("[data-sse-connect]");
   const disconnectButton = root.querySelector("[data-sse-disconnect]");
   const status = root.querySelector("[data-sse-status]");
@@ -64,8 +71,14 @@ export function mountSSELab(root, { locale = "en", translate = (key) => key, Eve
   function connect() {
     if (source) return;
     updateState("connecting", translate("sse.connecting"));
-    source = new EventSourceImpl(root.dataset.sseUrl || "/events");
-    source.onopen = () => updateState("connected");
+    const correlationID = createCorrelationIDImpl();
+    const endpoint = root.dataset.sseUrl || "/events";
+    const separator = endpoint.includes("?") ? "&" : "?";
+    source = new EventSourceImpl(`${endpoint}${separator}correlation_id=${encodeURIComponent(correlationID)}`);
+    source.onopen = () => {
+      updateState("connected");
+      hint.textContent = `${translate("sse.connected_hint")} correlation_id: ${correlationID}`;
+    };
     const onMessage = (event) => receive(event);
     source.onmessage = onMessage;
     if (typeof source.addEventListener === "function") source.addEventListener("status", onMessage);

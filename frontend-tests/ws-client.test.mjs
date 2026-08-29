@@ -47,6 +47,8 @@ globalThis.window = {
 
 const { createWebSocketClient } = await import("../static/ws-client.js");
 
+const browserCorrelationID = "018f47de-1234-7abc-8def-0123456789ab";
+
 function createClient() {
   const events = [];
   const states = [];
@@ -54,6 +56,7 @@ function createClient() {
     url: "/ws",
     onEvent: (event) => events.push(event),
     onStateChange: (state) => states.push(state),
+    createCorrelationIDImpl: () => browserCorrelationID,
   });
   return { client, events, states };
 }
@@ -64,11 +67,13 @@ test("connects, sends the contract, receives broadcast and exposes close details
 
   client.connect();
   const socket = FakeWebSocket.instances[0];
-  assert.equal(socket.url, "ws://testkit.example/ws");
+  assert.equal(socket.url, `ws://testkit.example/ws?correlation_id=${browserCorrelationID}`);
   assert.equal(states.at(-1).state, "connecting");
+  assert.equal(events.at(-1).detail.correlation_id, browserCorrelationID);
 
   socket.emit("open");
   assert.equal(states.at(-1).state, "connected");
+  assert.equal(events.at(-1).detail.correlation_id, browserCorrelationID);
 
   assert.equal(client.send("hello"), true);
   assert.deepEqual(JSON.parse(socket.sent[0]), { message: "hello" });
@@ -89,6 +94,7 @@ test("connects, sends the contract, receives broadcast and exposes close details
     code: 1006,
     reason: "network failure",
     clean: false,
+    correlation_id: browserCorrelationID,
   });
 });
 

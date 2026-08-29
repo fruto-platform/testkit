@@ -191,10 +191,19 @@ increases with every connection state transition in the process. Consumers can
 use it to reconstruct transition order when concurrent log records arrive out of
 order.
 
+Completed REST requests and accepted WebSocket and SSE connections include a
+UUIDv7 `correlation_id`. REST clients may provide it through
+`X-Testkit-Correlation-ID`; WebSocket and SSE clients may use the
+`correlation_id` query parameter. Missing or invalid values are replaced with a
+server-generated ID. REST responses return the effective ID in the same header.
+The bundled REST, WebSocket, and SSE labs generate and display these IDs
+automatically. Connection snapshots remain aggregate and do not include
+correlation IDs.
+
 Connection counts are local to one process and reset on restart. Logs do not
-include client addresses, headers, query strings, request payloads, WebSocket
-messages, or SSE data. They are observable test facts, not durable or global
-metrics.
+include client addresses, raw headers, raw query strings, request payloads,
+WebSocket messages, or SSE data. They are observable test facts, not durable or
+global metrics.
 
 ## Image distribution
 
