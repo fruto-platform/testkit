@@ -46,6 +46,11 @@ jobs:
             echo "release tag ${GITHUB_REF_NAME} does not match package.json version ${package_version}" >&2
             exit 1
           fi
+          source_version="$(cat VERSION)"
+          if [[ "${GITHUB_REF_NAME}" != "${source_version}" ]]; then
+            echo "release tag ${GITHUB_REF_NAME} does not match VERSION ${source_version}" >&2
+            exit 1
+          fi
 
       - name: Check formatting
         shell: bash
@@ -87,7 +92,6 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}
-          build-args: VERSION=${{ github.ref_name }}
           provenance: false
           sbom: false
           labels: |

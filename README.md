@@ -36,11 +36,12 @@ diagnostics remain an explicit container command.
 | HTTP/HTTPS network probe | `testkit probe URL` |
 | Configured peer identity and state | `GET /api/identity`, `GET /api/peers` |
 
-The build version injected through the Docker `VERSION` build argument is
-exposed in protocol payloads, structured logs, the browser header and footer,
-and the `Testkit-Version` header on every HTTP response, including successful
-WebSocket handshakes. This makes rollout and transport tests observable without
-changing the logical identity of the workload.
+The build version stored in the tracked `VERSION` file is embedded in the Go
+binary and exposed in protocol payloads, structured logs, the browser header and
+footer, and the `Testkit-Version` header on every HTTP response, including
+successful WebSocket handshakes. This makes rollout and transport tests
+observable without requiring external build arguments or changing the logical
+identity of the workload.
 
 ## Prerequisites
 
@@ -55,7 +56,6 @@ Build the image for the local Docker platform:
 ```sh
 docker buildx build \
   --load \
-  --build-arg VERSION=dev \
   --tag molejo-testkit:dev \
   .
 ```
@@ -80,7 +80,7 @@ curl --fail http://localhost:8080/api/status
 Expected response:
 
 ```json
-{"status":"ok","version":"dev"}
+{"status":"ok","version":"v0.6.1"}
 ```
 
 ## Browser console
@@ -128,7 +128,7 @@ Each connected WebSocket client receives the broadcast message with the current
 build version:
 
 ```json
-{"message":"hello","version":"dev"}
+{"message":"hello","version":"v0.6.1"}
 ```
 
 ## Network probe
@@ -277,7 +277,7 @@ by server shutdown do not replace the last observed peer state.
 Tagged releases publish multi-platform images to GitHub Container Registry:
 
 ```text
-ghcr.io/molejo-platform/testkit:v0.6.0
+ghcr.io/molejo-platform/testkit:v0.6.1
 ```
 
 Tags are provided for discovery. Automated tests should consume the immutable

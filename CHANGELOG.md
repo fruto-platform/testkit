@@ -9,6 +9,19 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 No changes yet.
 
+## [0.6.1] - 2026-08-29
+
+### Fixed
+
+- The binary now embeds its version from the tracked `VERSION` file, so plain
+  Go and Docker builds no longer report `devel` when external build arguments
+  are unavailable.
+
+### Changed
+
+- Release validation now requires the Git tag, `VERSION`, and `package.json` to
+  describe the same release without passing version metadata into Docker.
+
 ## [0.6.0] - 2026-08-29
 
 ### Added
@@ -120,7 +133,8 @@ No changes yet.
 
 - Initial multi-platform image publication workflow for GitHub Container Registry.
 
-[Unreleased]: https://github.com/molejo-platform/testkit/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/molejo-platform/testkit/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/molejo-platform/testkit/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/molejo-platform/testkit/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/molejo-platform/testkit/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/molejo-platform/testkit/compare/v0.3.0...v0.4.0

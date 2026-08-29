@@ -36,11 +36,12 @@ saída. Diagnósticos pontuais continuam exigindo um comando explícito do cont�
 | Probe de rede HTTP/HTTPS | `testkit probe URL` |
 | Identidade e estado de pares configurados | `GET /api/identity`, `GET /api/peers` |
 
-A versão de build injetada pelo argumento Docker `VERSION` é exposta nos
-payloads dos protocolos, nos logs estruturados, no cabeçalho e rodapé do browser
-e no header `Testkit-Version` de toda resposta HTTP, inclusive handshakes
-WebSocket bem-sucedidos. Isso torna testes de rollout e transporte observáveis
-sem alterar a identidade lógica da carga.
+A versão armazenada no arquivo versionado `VERSION` é embutida no binário Go e
+exposta nos payloads dos protocolos, nos logs estruturados, no cabeçalho e
+rodapé do browser e no header `Testkit-Version` de toda resposta HTTP, inclusive
+handshakes WebSocket bem-sucedidos. Isso torna testes de rollout e transporte
+observáveis sem exigir argumentos externos de build nem alterar a identidade
+lógica da carga.
 
 ## Pré-requisitos
 
@@ -55,7 +56,6 @@ Construa a imagem para a plataforma local do Docker:
 ```sh
 docker buildx build \
   --load \
-  --build-arg VERSION=dev \
   --tag molejo-testkit:dev \
   .
 ```
@@ -80,7 +80,7 @@ curl --fail http://localhost:8080/api/status
 Resposta esperada:
 
 ```json
-{"status":"ok","version":"dev"}
+{"status":"ok","version":"v0.6.1"}
 ```
 
 ## Console no navegador
@@ -129,7 +129,7 @@ Cada cliente WebSocket conectado recebe a mensagem de broadcast com a versão de
 build atual:
 
 ```json
-{"message":"hello","version":"dev"}
+{"message":"hello","version":"v0.6.1"}
 ```
 
 ## Probe de rede
@@ -281,7 +281,7 @@ Releases versionadas publicam imagens multiplataforma no GitHub Container
 Registry:
 
 ```text
-ghcr.io/molejo-platform/testkit:v0.6.0
+ghcr.io/molejo-platform/testkit:v0.6.1
 ```
 
 As tags existem para descoberta. Testes automatizados devem consumir o digest

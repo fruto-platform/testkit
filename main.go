@@ -41,6 +41,9 @@ const (
 	versionHeader            = "Testkit-Version"
 )
 
+//go:embed VERSION
+var embeddedVersion string
+
 // webFiles is embedded so the final scratch image needs no filesystem asset.
 //
 //go:embed templates/*.html templates/components/*.html static/*
@@ -55,7 +58,7 @@ var (
 	pageTranslationCatalog = mustLoadTranslationCatalog()
 )
 
-var version = "devel"
+var version = strings.TrimSpace(embeddedVersion)
 
 type response struct {
 	Status         string `json:"status"`

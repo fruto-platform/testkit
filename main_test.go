@@ -100,6 +100,34 @@ func newTestLogger() (*slog.Logger, *lockedBuffer) {
 	return slog.New(slog.NewJSONHandler(output, nil)), output
 }
 
+func TestVersionMatchesRepositoryMetadata(t *testing.T) {
+	versionFile, err := os.ReadFile("VERSION")
+	if err != nil {
+		t.Fatalf("read VERSION: %v", err)
+	}
+	sourceVersion := strings.TrimSpace(string(versionFile))
+	if !regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+$`).MatchString(sourceVersion) {
+		t.Fatalf("VERSION = %q, want vMAJOR.MINOR.PATCH", sourceVersion)
+	}
+	if version != sourceVersion {
+		t.Fatalf("binary version = %q, want repository version %q", version, sourceVersion)
+	}
+
+	packageFile, err := os.ReadFile("package.json")
+	if err != nil {
+		t.Fatalf("read package.json: %v", err)
+	}
+	var metadata struct {
+		Version string `json:"version"`
+	}
+	if err := json.Unmarshal(packageFile, &metadata); err != nil {
+		t.Fatalf("decode package.json: %v", err)
+	}
+	if sourceVersion != "v"+metadata.Version {
+		t.Fatalf("VERSION = %q, package.json version = %q", sourceVersion, metadata.Version)
+	}
+}
+
 func logRecords(t *testing.T, output *lockedBuffer) []map[string]interface{} {
 	t.Helper()
 	lines := strings.Split(strings.TrimSpace(output.String()), "\n")
@@ -700,7 +728,7 @@ func TestDashboardRendersWebSocketConsole(t *testing.T) {
 	for _, want := range []string{
 		`<html lang="en">`,
 		"Transport console",
-		"build devel",
+		"build " + version,
 		"Open lab",
 		"/en/rest",
 		"/en/graphql-lab",
@@ -876,7 +904,7 @@ func TestWebSocketPageRendersBreadcrumbsAndConsole(t *testing.T) {
 		"aria-current=\"page\">WebSocket",
 		"href=\"/en/\">Home",
 		"Back to surface map",
-		"build devel",
+		"build " + version,
 		"Client A",
 		"Client B",
 		"/static/app.js",
@@ -1165,7 +1193,7 @@ func TestSSETransportFlushesAndRemainsOpen(t *testing.T) {
 	}
 	select {
 	case line := <-lines:
-		if line != "data: {\"status\":\"ok\",\"version\":\"devel\"}" {
+		if line != "data: {\"status\":\"ok\",\"version\":\""+version+"\"}" {
 			t.Fatalf("SSE data line = %q", line)
 		}
 	case <-time.After(time.Second):

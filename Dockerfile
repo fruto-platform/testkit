@@ -2,7 +2,6 @@ FROM --platform=$BUILDPLATFORM golang:1.26.7-alpine@sha256:28d89ee9cc0ff9fec75c8
 
 ARG TARGETOS
 ARG TARGETARCH
-ARG VERSION=devel
 
 WORKDIR /src
 
@@ -12,7 +11,7 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS="${TARGETOS}" GOARCH="${TARGETARCH}" \
     go build -buildvcs=false -trimpath \
-    -ldflags="-s -w -X main.version=${VERSION}" \
+    -ldflags="-s -w" \
     -o /out/testkit .
 
 FROM scratch
