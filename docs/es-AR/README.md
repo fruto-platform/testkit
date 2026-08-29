@@ -228,7 +228,7 @@ Las releases versionadas publican imágenes multiplataforma en GitHub Container
 Registry:
 
 ```text
-ghcr.io/molejo-platform/testkit:v0.3.0
+ghcr.io/molejo-platform/testkit:v0.4.0
 ```
 
 Los tags existen para descubrimiento. Las pruebas automatizadas deben consumir el
