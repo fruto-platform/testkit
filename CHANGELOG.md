@@ -7,11 +7,20 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+No changes yet.
+
+## [0.7.0] - 2026-08-29
+
 ### Changed
 
 - The REST browser lab now separates preset selection from request execution,
   provides an explicit send action with duplicate-submit protection, and shows
   response duration, size, content type, version, and correlation ID.
+
+### Fixed
+
+- Local request setup failures now restore the REST lab controls and allow a
+  retry without reloading the page.
 
 ## [0.6.1] - 2026-08-29
 
@@ -137,7 +146,8 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Initial multi-platform image publication workflow for GitHub Container Registry.
 
-[Unreleased]: https://github.com/molejo-platform/testkit/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/molejo-platform/testkit/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/molejo-platform/testkit/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/molejo-platform/testkit/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/molejo-platform/testkit/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/molejo-platform/testkit/compare/v0.4.0...v0.5.0
