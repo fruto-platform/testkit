@@ -258,8 +258,17 @@ func serve(ctx context.Context, listener net.Listener, app *application) error {
 	select {
 	case err := <-serveResult:
 		app.close()
+		closeCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer cancel()
+		waitErr := app.waitForWebSockets(closeCtx)
 		if errors.Is(err, http.ErrServerClosed) {
+			if waitErr != nil {
+				return fmt.Errorf("wait for WebSocket connections: %w", waitErr)
+			}
 			return nil
+		}
+		if waitErr != nil {
+			return errors.Join(err, fmt.Errorf("wait for WebSocket connections: %w", waitErr))
 		}
 		return err
 	case <-ctx.Done():
@@ -268,6 +277,9 @@ func serve(ctx context.Context, listener net.Listener, app *application) error {
 		defer cancel()
 		if err := server.Shutdown(shutdownCtx); err != nil {
 			return fmt.Errorf("shutdown HTTP server: %w", err)
+		}
+		if err := app.waitForWebSockets(shutdownCtx); err != nil {
+			return fmt.Errorf("wait for WebSocket connections: %w", err)
 		}
 		if err := <-serveResult; err != nil && !errors.Is(err, http.ErrServerClosed) {
 			return err
@@ -339,6 +351,10 @@ func newApplication(config handlerConfig) *application {
 
 func (app *application) close() {
 	app.hub.close()
+}
+
+func (app *application) waitForWebSockets(ctx context.Context) error {
+	return app.hub.wait(ctx)
 }
 
 func (app *application) reportActiveConnections(ctx context.Context, ticks <-chan time.Time) {
@@ -808,9 +824,10 @@ type wsClient struct {
 }
 
 type webSocketHub struct {
-	mutex   sync.Mutex
-	clients map[*wsClient]struct{}
-	closed  bool
+	mutex    sync.Mutex
+	clients  map[*wsClient]struct{}
+	closed   bool
+	handlers sync.WaitGroup
 }
 
 func newWebSocketHub() *webSocketHub {
@@ -823,8 +840,27 @@ func (hub *webSocketHub) register(client *wsClient) bool {
 	if hub.closed {
 		return false
 	}
+	hub.handlers.Add(1)
 	hub.clients[client] = struct{}{}
 	return true
+}
+
+func (hub *webSocketHub) handlerDone() {
+	hub.handlers.Done()
+}
+
+func (hub *webSocketHub) wait(ctx context.Context) error {
+	done := make(chan struct{})
+	go func() {
+		hub.handlers.Wait()
+		close(done)
+	}()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-done:
+		return nil
+	}
 }
 
 func (hub *webSocketHub) unregister(client *wsClient) {
@@ -892,6 +928,7 @@ func webSocket(writer http.ResponseWriter, request *http.Request, hub *webSocket
 		_ = connection.Close()
 		return
 	}
+	defer client.hub.handlerDone()
 	correlationID := resolveCorrelationID(request.URL.Query().Get(correlationQuery))
 	connectionClosed := observeConnection(request.Context(), logger, stats, protocolWebSocket, "/ws", correlationID)
 	defer func() {

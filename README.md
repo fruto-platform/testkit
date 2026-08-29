@@ -200,10 +200,18 @@ The bundled REST, WebSocket, and SSE labs generate and display these IDs
 automatically. Connection snapshots remain aggregate and do not include
 correlation IDs.
 
-Connection counts are local to one process and reset on restart. Logs do not
-include client addresses, raw headers, raw query strings, request payloads,
-WebSocket messages, or SSE data. They are observable test facts, not durable or
-global metrics.
+Connection counts represent accepted connections currently observed by one
+server process and reset on restart. Page refreshes, normal closes, and transport
+errors decrement the count when the server observes the disconnect. WebSocket
+heartbeats bound silent failure detection to about 60 seconds; SSE detection is
+best effort when a network path disappears without closing the HTTP stream.
+Graceful shutdown waits for accepted WebSocket handlers to emit their closing
+facts. A crash or forced process termination cannot emit closing facts, so
+consumers must treat each server start as a new process-local epoch.
+
+Logs do not include client addresses, raw headers, raw query strings, request
+payloads, WebSocket messages, or SSE data. They are observable test facts, not
+durable or global metrics.
 
 ## Image distribution
 

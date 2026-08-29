@@ -201,9 +201,18 @@ gerado pelo servidor. Respostas REST devolvem o ID efetivo no mesmo header.
 Os labs REST, WebSocket e SSE incluídos geram e exibem esses IDs automaticamente.
 Snapshots de conexões permanecem agregados e não incluem IDs de correlação.
 
-As quantidades de conexões são locais a um processo e zeram no restart. Os logs
-não incluem endereços de clientes, headers brutos, query strings brutas, payloads
-das requisições, mensagens WebSocket nem dados SSE. São fatos de teste
+As quantidades representam conexões aceitas observadas atualmente por um processo
+do servidor e zeram no restart. Atualizações de página, fechamentos normais e
+erros de transporte diminuem a quantidade quando o servidor observa a
+desconexão. Heartbeats WebSocket limitam a detecção de falhas silenciosas a cerca
+de 60 segundos; no SSE, a detecção é best effort quando o caminho de rede
+desaparece sem fechar o stream HTTP. O shutdown gracioso aguarda os handlers
+WebSocket aceitos emitirem seus fatos de fechamento. Um crash ou encerramento
+forçado não consegue emitir fatos de fechamento, portanto consumidores devem
+tratar cada início do servidor como uma nova época local ao processo.
+
+Os logs não incluem endereços de clientes, headers brutos, query strings brutas,
+payloads das requisições, mensagens WebSocket nem dados SSE. São fatos de teste
 observáveis, não métricas duráveis ou globais.
 
 ## Distribuição da imagem

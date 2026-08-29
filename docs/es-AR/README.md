@@ -207,10 +207,20 @@ ID efectivo en el mismo header. Los labs REST, WebSocket y SSE incluidos generan
 y muestran estos IDs automáticamente. Los snapshots de conexiones permanecen
 agregados y no incluyen IDs de correlación.
 
-Las cantidades de conexiones son locales a un proceso y se reinician junto con
-él. Los logs no incluyen direcciones de clientes, headers sin procesar, query
-strings sin procesar, payloads de requests, mensajes WebSocket ni datos SSE. Son
-hechos de prueba observables, no métricas durables o globales.
+Las cantidades representan conexiones aceptadas observadas actualmente por un
+proceso del servidor y se reinician junto con él. Las actualizaciones de página,
+los cierres normales y los errores de transporte disminuyen la cantidad cuando
+el servidor observa la desconexión. Los heartbeats WebSocket limitan la detección
+de fallas silenciosas a cerca de 60 segundos; en SSE, la detección es best effort
+cuando la ruta de red desaparece sin cerrar el stream HTTP. El apagado controlado
+espera que los handlers WebSocket aceptados emitan sus hechos de cierre. Un crash
+o una terminación forzada no puede emitir hechos de cierre, por lo que los
+consumidores deben tratar cada inicio del servidor como una nueva época local al
+proceso.
+
+Los logs no incluyen direcciones de clientes, headers sin procesar, query strings
+sin procesar, payloads de requests, mensajes WebSocket ni datos SSE. Son hechos
+de prueba observables, no métricas durables o globales.
 
 ## Distribución de la imagen
 

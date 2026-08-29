@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -33,6 +34,39 @@ type lockedBuffer struct {
 type failingFlusherWriter struct {
 	header     http.Header
 	statusCode int
+}
+
+type blockingConnectionCloseHandler struct {
+	closeStarted chan struct{}
+	releaseClose chan struct{}
+	closeOnce    sync.Once
+}
+
+func (handler *blockingConnectionCloseHandler) Enabled(context.Context, slog.Level) bool {
+	return true
+}
+
+func (handler *blockingConnectionCloseHandler) Handle(_ context.Context, record slog.Record) error {
+	protocol := ""
+	record.Attrs(func(attribute slog.Attr) bool {
+		if attribute.Key == "protocol" {
+			protocol = attribute.Value.String()
+		}
+		return true
+	})
+	if record.Message == "connection closed" && protocol == protocolWebSocket {
+		handler.closeOnce.Do(func() { close(handler.closeStarted) })
+		<-handler.releaseClose
+	}
+	return nil
+}
+
+func (handler *blockingConnectionCloseHandler) WithAttrs([]slog.Attr) slog.Handler {
+	return handler
+}
+
+func (handler *blockingConnectionCloseHandler) WithGroup(string) slog.Handler {
+	return handler
 }
 
 func (writer *failingFlusherWriter) Header() http.Header {
@@ -459,6 +493,77 @@ func TestActiveConnectionReporterLogsOnTickAndStopsWhenTicksClose(t *testing.T) 
 	case <-done:
 	case <-time.After(time.Second):
 		t.Fatal("connection reporter did not stop after its tick channel closed")
+	}
+}
+
+func TestServeWaitsForWebSocketCloseFactDuringShutdown(t *testing.T) {
+	handler := &blockingConnectionCloseHandler{
+		closeStarted: make(chan struct{}),
+		releaseClose: make(chan struct{}),
+	}
+	var releaseOnce sync.Once
+	releaseClose := func() {
+		releaseOnce.Do(func() { close(handler.releaseClose) })
+	}
+	t.Cleanup(releaseClose)
+
+	app := newApplication(handlerConfig{logger: slog.New(handler)})
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	serveResult := make(chan error, 1)
+	go func() { serveResult <- serve(ctx, listener, app) }()
+
+	sseResponse, err := http.Get("http://" + listener.Addr().String() + "/events")
+	if err != nil {
+		t.Fatalf("open SSE stream: %v", err)
+	}
+	t.Cleanup(func() { _ = sseResponse.Body.Close() })
+	connection, _, err := websocket.DefaultDialer.Dial("ws://"+listener.Addr().String()+"/ws", nil)
+	if err != nil {
+		t.Fatalf("dial WebSocket: %v", err)
+	}
+	t.Cleanup(func() { _ = connection.Close() })
+	deadline := time.Now().Add(time.Second)
+	for {
+		webSocketActive, sseActive, _ := app.connections.snapshot()
+		if webSocketActive == 1 && sseActive == 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("active connections = (%d, %d), want (1, 1)", webSocketActive, sseActive)
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	cancel()
+	select {
+	case <-handler.closeStarted:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for WebSocket close fact")
+	}
+	select {
+	case err := <-serveResult:
+		t.Fatalf("serve returned before the WebSocket close fact completed: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	releaseClose()
+	select {
+	case err := <-serveResult:
+		if err != nil {
+			t.Fatalf("serve: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("serve did not return after the WebSocket close fact completed")
+	}
+	webSocketActive, sseActive, _ := app.connections.snapshot()
+	if webSocketActive != 0 || sseActive != 0 {
+		t.Fatalf("active connections = (%d, %d), want (0, 0)", webSocketActive, sseActive)
 	}
 }
 
