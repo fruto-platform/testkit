@@ -275,7 +275,7 @@ by server shutdown do not replace the last observed peer state.
 Tagged releases publish multi-platform images to GitHub Container Registry:
 
 ```text
-ghcr.io/molejo-platform/testkit:v0.4.0
+ghcr.io/molejo-platform/testkit:v0.5.0
 ```
 
 Tags are provided for discovery. Automated tests should consume the immutable
