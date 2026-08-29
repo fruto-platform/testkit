@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"embed"
 	"encoding/hex"
 	"encoding/json"
@@ -11,6 +12,7 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
@@ -50,6 +52,7 @@ var embeddedVersion string
 var webFiles embed.FS
 
 var (
+	staticAssetVersion     = mustStaticAssetVersion(webFiles)
 	indexPageTemplates     = newPageTemplates("index.html")
 	webSocketPageTemplates = newPageTemplates("websocket.html")
 	restPageTemplates      = newPageTemplates("rest.html")
@@ -73,17 +76,18 @@ type item struct {
 }
 
 type pageData struct {
-	TitleKey         string
-	Version          string
-	Locale           string
-	Texts            map[string]string
-	TranslationsJSON string
-	Languages        []languageOption
-	HomeURL          string
-	LabEndpoint      string
-	Protocols        []protocolCardView
-	Clients          []webSocketClientView
-	Breadcrumbs      []breadcrumb
+	TitleKey           string
+	Version            string
+	StaticAssetVersion string
+	Locale             string
+	Texts              map[string]string
+	TranslationsJSON   string
+	Languages          []languageOption
+	HomeURL            string
+	LabEndpoint        string
+	Protocols          []protocolCardView
+	Clients            []webSocketClientView
+	Breadcrumbs        []breadcrumb
 }
 
 func (data pageData) T(key string) string {
@@ -200,6 +204,39 @@ func newPageTemplates(page string) *template.Template {
 			Option("missingkey=error").
 			ParseFS(webFiles, "templates/base.html", "templates/components/*.html", "templates/"+page),
 	)
+}
+
+func mustStaticAssetVersion(files fs.FS) string {
+	assetVersion, err := staticAssetVersionFromFS(files)
+	if err != nil {
+		panic(fmt.Sprintf("calculate static asset version: %v", err))
+	}
+	return assetVersion
+}
+
+func staticAssetVersionFromFS(files fs.FS) (string, error) {
+	digest := sha256.New()
+	err := fs.WalkDir(files, "static", func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		data, err := fs.ReadFile(files, path)
+		if err != nil {
+			return err
+		}
+		_, _ = digest.Write([]byte(path))
+		_, _ = digest.Write([]byte{0})
+		_, _ = digest.Write(data)
+		_, _ = digest.Write([]byte{0})
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(digest.Sum(nil)[:16]), nil
 }
 
 func main() {
@@ -615,6 +652,7 @@ func localizedProtocolCards(currentLocale locale) []protocolCardView {
 
 func localizedPageData(currentLocale locale, page string, data pageData) pageData {
 	data.Locale = string(currentLocale)
+	data.StaticAssetVersion = staticAssetVersion
 	data.Texts = pageTranslationCatalog.translations(currentLocale)
 	data.TranslationsJSON = pageTranslationCatalog.translationsJSON(currentLocale)
 	data.Languages = languageOptions(currentLocale, page)
@@ -668,10 +706,12 @@ func renderPage(writer http.ResponseWriter, templates *template.Template, data p
 		return
 	}
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+	writer.Header().Set("Cache-Control", "no-cache")
 	_, _ = page.WriteTo(writer)
 }
 
 func staticAsset(writer http.ResponseWriter, request *http.Request) {
+	writer.Header().Set("Cache-Control", "no-store")
 	if request.Method != http.MethodGet {
 		writer.Header().Set("Allow", http.MethodGet)
 		http.Error(writer, "method not allowed", http.StatusMethodNotAllowed)
@@ -682,10 +722,22 @@ func staticAsset(writer http.ResponseWriter, request *http.Request) {
 		http.NotFound(writer, request)
 		return
 	}
+	immutable := false
+	if requestedVersion, versionedPath, found := strings.Cut(assetPath, "/"); found && requestedVersion == staticAssetVersion {
+		assetPath = versionedPath
+		immutable = true
+	}
+	if assetPath == "" {
+		http.NotFound(writer, request)
+		return
+	}
 	data, err := webFiles.ReadFile("static/" + assetPath)
 	if err != nil {
 		http.NotFound(writer, request)
 		return
+	}
+	if immutable {
+		writer.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	}
 	http.ServeContent(writer, request, assetPath, time.Time{}, bytes.NewReader(data))
 }

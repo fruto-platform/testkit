@@ -17,6 +17,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -709,7 +710,77 @@ func TestStaticAssets(t *testing.T) {
 			if !strings.Contains(responseRecorder.Body.String(), test.contains) {
 				t.Fatalf("body does not contain %q: %s", test.contains, responseRecorder.Body.String())
 			}
+			if got := responseRecorder.Header().Get("Cache-Control"); got != "no-store" {
+				t.Fatalf("Cache-Control = %q, want no-store", got)
+			}
 		})
+	}
+}
+
+func TestStaticAssetVersionChangesWithContent(t *testing.T) {
+	first := fstest.MapFS{
+		"static/app.js":    {Data: []byte("first")},
+		"static/style.css": {Data: []byte("style")},
+	}
+	changed := fstest.MapFS{
+		"static/app.js":    {Data: []byte("second")},
+		"static/style.css": {Data: []byte("style")},
+	}
+
+	firstVersion, err := staticAssetVersionFromFS(first)
+	if err != nil {
+		t.Fatalf("calculate first static asset version: %v", err)
+	}
+	changedVersion, err := staticAssetVersionFromFS(changed)
+	if err != nil {
+		t.Fatalf("calculate changed static asset version: %v", err)
+	}
+	if firstVersion == changedVersion {
+		t.Fatalf("static asset version did not change: %q", firstVersion)
+	}
+	if matched, _ := regexp.MatchString(`^[0-9a-f]{32}$`, firstVersion); !matched {
+		t.Fatalf("static asset version = %q, want 128-bit hexadecimal digest", firstVersion)
+	}
+}
+
+func TestVersionedStaticAssetsUseImmutableCache(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		contains string
+	}{
+		{name: "app.js", contains: "mountWebSocketClient"},
+		{name: "rest-ui.js", contains: "data-rest-send"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, "/static/"+staticAssetVersion+"/"+test.name, nil)
+			responseRecorder := httptest.NewRecorder()
+
+			newHandler().ServeHTTP(responseRecorder, request)
+
+			if responseRecorder.Code != http.StatusOK {
+				t.Fatalf("status code = %d, want %d", responseRecorder.Code, http.StatusOK)
+			}
+			if got := responseRecorder.Header().Get("Cache-Control"); got != "public, max-age=31536000, immutable" {
+				t.Fatalf("Cache-Control = %q, want immutable cache", got)
+			}
+			if !strings.Contains(responseRecorder.Body.String(), test.contains) {
+				t.Fatalf("versioned asset does not contain %q", test.contains)
+			}
+		})
+	}
+}
+
+func TestUnknownStaticAssetVersionIsNotCached(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "/static/00000000000000000000000000000000/app.js", nil)
+	responseRecorder := httptest.NewRecorder()
+
+	newHandler().ServeHTTP(responseRecorder, request)
+
+	if responseRecorder.Code != http.StatusNotFound {
+		t.Fatalf("status code = %d, want %d", responseRecorder.Code, http.StatusNotFound)
+	}
+	if got := responseRecorder.Header().Get("Cache-Control"); got != "no-store" {
+		t.Fatalf("Cache-Control = %q, want no-store", got)
 	}
 }
 
@@ -725,6 +796,9 @@ func TestDashboardRendersWebSocketConsole(t *testing.T) {
 	if got := responseRecorder.Header().Get("Content-Type"); got != "text/html; charset=utf-8" {
 		t.Fatalf("Content-Type = %q, want text/html; charset=utf-8", got)
 	}
+	if got := responseRecorder.Header().Get("Cache-Control"); got != "no-cache" {
+		t.Fatalf("Cache-Control = %q, want no-cache", got)
+	}
 	for _, want := range []string{
 		`<html lang="en">`,
 		"Transport console",
@@ -736,7 +810,8 @@ func TestDashboardRendersWebSocketConsole(t *testing.T) {
 		"/en/websocket",
 		"4 active",
 		`data-locale="en"`,
-		"/static/app.js",
+		"/static/" + staticAssetVersion + "/style.css",
+		"/static/" + staticAssetVersion + "/app.js",
 	} {
 		if !strings.Contains(responseRecorder.Body.String(), want) {
 			t.Fatalf("dashboard does not contain %q", want)
@@ -907,7 +982,7 @@ func TestWebSocketPageRendersBreadcrumbsAndConsole(t *testing.T) {
 		"build " + version,
 		"Client A",
 		"Client B",
-		"/static/app.js",
+		"/static/" + staticAssetVersion + "/app.js",
 	} {
 		if !strings.Contains(responseRecorder.Body.String(), want) {
 			t.Fatalf("WebSocket page does not contain %q", want)

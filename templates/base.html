@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="{{ .T "meta.description" }}">
     <title>{{ .T .TitleKey }} · {{ .T "brand.name" }}</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/{{ .StaticAssetVersion }}/style.css">
   </head>
   <body data-locale="{{ .Locale }}" data-translations="{{ .TranslationsJSON }}">
     <a class="skip-link" href="#main-content">{{ .T "navigation.skip" }}</a>
@@ -33,7 +33,7 @@
 
       {{ block "content" . }}{{ end }}
     </div>
-    <script type="module" src="/static/app.js"></script>
+    <script type="module" src="/static/{{ .StaticAssetVersion }}/app.js"></script>
   </body>
 </html>
 {{- end }}
