@@ -38,8 +38,9 @@ go mod tidy -diff
 - Keep the implementation deterministic and suitable for disposable tests.
 - Avoid abstractions or dependencies without a demonstrated testing requirement.
 - Treat endpoints, payloads, exit codes, and container behavior as contracts.
-- Keep network probes explicit commands. Do not add an arbitrary outbound proxy
-  to the public HTTP server.
+- Keep one-off network probes as explicit commands and periodic peers in a
+  read-only allowlist. Never let a public HTTP request select or trigger an
+  outbound destination.
 - Preserve the restricted runtime: non-root, read-only filesystem compatible,
   no required capabilities, and bounded shutdown.
 - Add a regression test before fixing a defect.

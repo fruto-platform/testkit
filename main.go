@@ -149,6 +149,7 @@ func (view webSocketClientView) T(key string) string {
 type handlerConfig struct {
 	sseInterval time.Duration
 	logger      *slog.Logger
+	peers       *peerMonitor
 }
 
 type application struct {
@@ -156,6 +157,7 @@ type application struct {
 	hub         *webSocketHub
 	logger      *slog.Logger
 	connections *connectionStats
+	peers       *peerMonitor
 }
 
 const (
@@ -212,12 +214,17 @@ func main() {
 	slog.SetDefault(logger)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	peerMonitor, err := loadPeerMonitorFromEnv(logger)
+	if err != nil {
+		logger.ErrorContext(ctx, "peer configuration failed", "event", "peers.configuration_failed", "error", err)
+		os.Exit(1)
+	}
 	listener, err := net.Listen("tcp", ":8080")
 	if err != nil {
 		logger.ErrorContext(ctx, "server listen failed", "event", "server.listen_failed", "error", err)
 		os.Exit(1)
 	}
-	app := newApplication(handlerConfig{sseInterval: sseIntervalFromEnv(), logger: logger})
+	app := newApplication(handlerConfig{sseInterval: sseIntervalFromEnv(), logger: logger, peers: peerMonitor})
 	logger.InfoContext(ctx, "server started", "event", "server.started", "listen_address", listener.Addr().String())
 	if err := serve(ctx, listener, app); err != nil {
 		logger.ErrorContext(ctx, "server failed", "event", "server.failed", "error", err)
@@ -248,6 +255,18 @@ func serve(ctx context.Context, listener net.Listener, app *application) error {
 	defer func() {
 		stopReporter()
 		<-reporterDone
+	}()
+	monitorCtx, stopMonitor := context.WithCancel(ctx)
+	monitorDone := make(chan struct{})
+	go func() {
+		defer close(monitorDone)
+		if app.peers != nil {
+			app.peers.run(monitorCtx)
+		}
+	}()
+	defer func() {
+		stopMonitor()
+		<-monitorDone
 	}()
 
 	serveResult := make(chan error, 1)
@@ -333,6 +352,10 @@ func newApplication(config handlerConfig) *application {
 	mux.HandleFunc("/api/status", logHTTPRequest(config.logger, "/api/status", exactGET("/api/status", writeOK)))
 	mux.HandleFunc("/api/items", logHTTPRequest(config.logger, "/api/items", exactGET("/api/items", listItems)))
 	mux.HandleFunc("/api/echo", logHTTPRequest(config.logger, "/api/echo", apiEcho))
+	if config.peers != nil {
+		mux.HandleFunc(peerIdentityPath, exactGET(peerIdentityPath, config.peers.identityHandler))
+		mux.HandleFunc("/api/peers", exactGET("/api/peers", config.peers.stateHandler))
+	}
 	mux.HandleFunc("/graphql", graphQL)
 	mux.HandleFunc("/events", exactGET("/events", func(writer http.ResponseWriter, request *http.Request) {
 		events(writer, request, config.sseInterval, config.logger, connections)
@@ -346,6 +369,7 @@ func newApplication(config handlerConfig) *application {
 		hub:         webSocketHub,
 		logger:      config.logger,
 		connections: connections,
+		peers:       config.peers,
 	}
 }
 

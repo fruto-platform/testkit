@@ -24,6 +24,14 @@ Quem puder executar esse comando recebe a identidade de rede do contêiner ou Po
 portanto, o acesso à criação e execução de cargas permanece uma fronteira de
 segurança do cluster.
 
+O monitoramento de pares configurados preserva essa mesma fronteira. Os destinos
+vêm somente do arquivo read-only selecionado por `TESTKIT_PEERS_FILE`;
+requisições HTTP públicas não podem adicionar, substituir nem acionar destinos.
+As verificações ignoram variáveis de proxy, rejeitam redirects, validam
+certificados HTTPS e retornam apenas estado sanitizado em memória, sem cache.
+Trate acesso de escrita ao arquivo como permissão para originar tráfego de rede
+a partir do workload do Testkit.
+
 ## Reportando uma vulnerabilidade
 
 O relato privado de vulnerabilidades do GitHub ainda não está habilitado neste

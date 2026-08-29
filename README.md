@@ -11,9 +11,10 @@ applications, Kubernetes application delivery, and network policies. A single
 static Go binary provides REST, GraphQL, Server-Sent Events (SSE), WebSocket,
 health endpoints, and an explicit outbound probe command.
 
-The public HTTP server and the network probe are intentionally separate. Running
-the server cannot turn a publicly exposed test workload into an outbound proxy;
-network diagnostics require an explicit container command.
+The public HTTP server and arbitrary network probe are intentionally separate.
+Server mode can contact only peers declared in an optional read-only file, so a
+public request cannot turn the workload into an outbound proxy. One-off network
+diagnostics remain an explicit container command.
 
 ## Capabilities
 
@@ -33,6 +34,7 @@ network diagnostics require an explicit container command.
 | Server-Sent Events | `GET /events` |
 | WebSocket echo and broadcast | `GET /ws` |
 | HTTP/HTTPS network probe | `testkit probe URL` |
+| Configured peer identity and state | `GET /api/identity`, `GET /api/peers` |
 
 Responses include the build version injected through the Docker `VERSION` build
 argument. This makes rollout and transport tests observable without changing the
@@ -149,6 +151,50 @@ namespace under test. Apply the labels and ServiceAccount whose network identity
 you want to validate, then assert the Job exit code. This keeps the source,
 destination, and expected allow-or-deny result explicit.
 
+## Configured peer monitoring
+
+Server mode can continuously verify a fixed allowlist of other Testkit
+instances. The feature is disabled unless `TESTKIT_PEERS_FILE` points to a
+read-only JSON file:
+
+```json
+{
+  "schema_version": 1,
+  "instance_id": "testkit-a",
+  "check_interval": "30s",
+  "timeout": "3s",
+  "peers": [
+    {
+      "name": "testkit-b",
+      "scheme": "http",
+      "host": "testkit-b.namespace-b",
+      "port": 8080,
+      "expected_instance_id": "testkit-b"
+    }
+  ]
+}
+```
+
+Each check opens a fresh direct connection, ignores HTTP proxy environment
+variables, does not follow redirects, and requests the fixed `/api/identity`
+path. HTTPS uses the system trust store without an insecure mode. Responses are
+limited to 4 KiB and at most four peers are checked concurrently. The first
+check is immediate and later checks use `check_interval`; `timeout` must be
+positive, no greater than 30 seconds, and shorter than that interval.
+
+`GET /api/identity` returns the configured logical identity and a process-local
+UUIDv7 `boot_id`. `GET /api/peers` returns only sanitized in-memory facts about
+the latest checks. Both endpoints exist only when the peer file is configured.
+An instance with no outbound peers can use `"peers": []` to serve its identity.
+Neither endpoint accepts a destination or starts an on-demand check, and both
+responses use `Cache-Control: no-store`.
+
+The outcomes are `reachable`, `unreachable`, and `unknown`. Reasons distinguish
+DNS, connection, TLS, HTTP, response, and identity failures. These are observed
+transport facts: Testkit never claims that a failure was caused by a
+NetworkPolicy. A Service with multiple replicas proves reachability to the
+Service, not to one specific Pod.
+
 ## Container contract
 
 - Listens on TCP port `8080`.
@@ -171,6 +217,7 @@ connections are rejected.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `SSE_INTERVAL` | `1s` | Interval between SSE status events. |
+| `TESTKIT_PEERS_FILE` | unset | Read-only peer configuration; unset disables peer monitoring and its HTTP endpoints. |
 
 Invalid or non-positive `SSE_INTERVAL` values fall back to the default.
 
@@ -185,6 +232,10 @@ includes `service` and `version`. The primary `event` values are:
 - `connection.opened` and `connection.closed` for WebSocket and SSE, with the
   active protocol and total connection counts and connection duration on close;
 - `connections.snapshot` every 15 minutes while at least one connection is active.
+- `peer.identity.requested` for configured peer identity requests;
+- `peer.state.changed` when a configured peer outcome, reason, or remote
+  `boot_id` changes;
+- `peers.snapshot` every 15 minutes while at least one peer is configured.
 
 Connection lifecycle events and snapshots include `connection_sequence`, which
 increases with every connection state transition in the process. Consumers can
@@ -212,6 +263,12 @@ consumers must treat each server start as a new process-local epoch.
 Logs do not include client addresses, raw headers, raw query strings, request
 payloads, WebSocket messages, or SSE data. They are observable test facts, not
 durable or global metrics.
+
+Peer facts use logical peer names and stable reasons. They do not log configured
+hosts, resolved IP addresses, proxy settings, response bodies, or raw errors.
+Peer state resets when the process restarts; `boot_id` identifies the local
+epoch and `observed_boot_id` identifies the latest remote epoch. Checks canceled
+by server shutdown do not replace the last observed peer state.
 
 ## Image distribution
 

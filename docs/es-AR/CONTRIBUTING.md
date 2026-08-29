@@ -39,8 +39,9 @@ go mod tidy -diff
 - Evitá abstracciones o dependencias sin un requisito de prueba demostrado.
 - Tratá endpoints, payloads, códigos de salida y comportamiento del contenedor
   como contratos.
-- Mantené los probes de red como comandos explícitos. No agregues un proxy de
-  egreso arbitrario al servidor HTTP público.
+- Mantené los probes puntuales como comandos explícitos y los pares periódicos en
+  una allowlist de solo lectura. Nunca permitas que una solicitud HTTP pública
+  seleccione o active un destino de egreso.
 - Conservá el runtime restringido: no root, compatible con filesystem de solo
   lectura, sin capabilities obligatorias y con shutdown limitado.
 - Agregá una prueba de regresión antes de corregir un defecto.

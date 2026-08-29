@@ -7,7 +7,20 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-No changes yet.
+### Added
+
+- Opt-in, versioned peer monitoring for fixed HTTP/HTTPS destinations, with
+  local and observed remote process identities, immediate and periodic
+  fresh-connection checks, sanitized non-cacheable in-memory state, bounded
+  timeouts and concurrency, and correlated structured logs.
+- Security and lifecycle coverage for peer configuration, redirects, proxy
+  bypass, TLS validation, response limits, identity matching, state changes,
+  remote restarts, concurrency, and shutdown cancellation.
+
+### Security
+
+- Peer destinations can only come from the read-only configuration file; public
+  HTTP requests cannot provide or trigger arbitrary outbound destinations.
 
 ## [0.4.0] - 2026-08-28
 

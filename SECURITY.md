@@ -23,6 +23,13 @@ diagnostics. Anyone able to execute that command receives the network identity o
 the container or Pod, so access to workload creation and execution remains a
 cluster security boundary.
 
+Configured peer monitoring keeps the same boundary. Destinations come only from
+the read-only file selected by `TESTKIT_PEERS_FILE`; public HTTP requests cannot
+add, replace, or trigger destinations. Peer checks ignore proxy environment
+variables, reject redirects, validate HTTPS certificates, and return only
+sanitized, non-cacheable in-memory state. Treat write access to the peer file as
+equivalent to permission to originate network traffic from the Testkit workload.
+
 ## Reporting a vulnerability
 
 GitHub private vulnerability reporting is not enabled for this repository yet.

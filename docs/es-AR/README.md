@@ -11,10 +11,11 @@ aplicaciones HTTP, entrega de aplicaciones en Kubernetes y políticas de red. Un
 único binario Go estático ofrece REST, GraphQL, Server-Sent Events (SSE),
 WebSocket, endpoints de salud y un comando explícito de probe de egreso.
 
-El servidor HTTP público y el probe de red están separados intencionalmente.
-Ejecutar el servidor no convierte una carga de prueba expuesta públicamente en un
-proxy de egreso; los diagnósticos de red requieren un comando explícito del
-contenedor.
+El servidor HTTP público y el probe de red arbitrario están separados
+intencionalmente. El modo servidor solo puede llamar a pares declarados en un
+archivo opcional de solo lectura, por lo que una solicitud pública no convierte
+la carga en un proxy de egreso. Los diagnósticos puntuales siguen requiriendo un
+comando explícito del contenedor.
 
 ## Capacidades
 
@@ -34,6 +35,7 @@ contenedor.
 | Server-Sent Events | `GET /events` |
 | Echo y broadcast WebSocket | `GET /ws` |
 | Probe de red HTTP/HTTPS | `testkit probe URL` |
+| Identidad y estado de pares configurados | `GET /api/identity`, `GET /api/peers` |
 
 Las respuestas incluyen la versión de build inyectada mediante el argumento
 Docker `VERSION`. Esto hace observables las pruebas de rollout y transporte sin
@@ -152,6 +154,51 @@ identidad de red querés validar y comprobá el código de salida del Job. Así,
 origen, el destino y el resultado esperado de permiso o denegación quedan
 explícitos.
 
+## Monitoreo de pares configurados
+
+El modo servidor puede verificar continuamente una allowlist fija de otras
+instancias de Testkit. La funcionalidad queda deshabilitada salvo que
+`TESTKIT_PEERS_FILE` apunte a un archivo JSON de solo lectura:
+
+```json
+{
+  "schema_version": 1,
+  "instance_id": "testkit-a",
+  "check_interval": "30s",
+  "timeout": "3s",
+  "peers": [
+    {
+      "name": "testkit-b",
+      "scheme": "http",
+      "host": "testkit-b.namespace-b",
+      "port": 8080,
+      "expected_instance_id": "testkit-b"
+    }
+  ]
+}
+```
+
+Cada verificación abre una conexión directa nueva, ignora las variables de
+proxy HTTP, no sigue redirects y solicita el camino fijo `/api/identity`. HTTPS
+usa el trust store del sistema sin modo inseguro. Las respuestas se limitan a 4
+KiB y como máximo cuatro pares se verifican en paralelo. La primera verificación
+es inmediata y las siguientes usan `check_interval`; `timeout` debe ser positivo
+menor o igual a 30 segundos y menor que ese intervalo.
+
+`GET /api/identity` devuelve la identidad lógica configurada y un `boot_id`
+UUIDv7 local al proceso. `GET /api/peers` devuelve únicamente hechos sanitizados
+en memoria sobre las últimas verificaciones. Ambos endpoints existen solo
+cuando el archivo está configurado. Una instancia sin pares de egreso puede usar
+`"peers": []` para servir su identidad. Ningún endpoint acepta un destino ni
+inicia una verificación bajo demanda, y ambas respuestas usan
+`Cache-Control: no-store`.
+
+Los outcomes son `reachable`, `unreachable` y `unknown`. Los reasons distinguen
+fallas de DNS, conexión, TLS, HTTP, respuesta e identidad. Son hechos de
+transporte observados: Testkit nunca afirma que una falla fue causada por una
+NetworkPolicy. Un Service con múltiples réplicas demuestra alcance al Service,
+no a un Pod específico.
+
 ## Contrato del contenedor
 
 - Escucha en el puerto TCP `8080`.
@@ -174,6 +221,7 @@ cross-origin de navegadores son rechazadas.
 | Variable | Valor predeterminado | Finalidad |
 | --- | --- | --- |
 | `SSE_INTERVAL` | `1s` | Intervalo entre eventos de estado SSE. |
+| `TESTKIT_PEERS_FILE` | no definido | Configuración de solo lectura; ausente deshabilita el monitor y sus endpoints. |
 
 Los valores inválidos o no positivos de `SSE_INTERVAL` usan el valor
 predeterminado.
@@ -192,6 +240,10 @@ son:
   cantidades de conexiones activas del protocolo y totales y la duración al cerrar;
 - `connections.snapshot` cada 15 minutos mientras haya al menos una conexión
   activa.
+- `peer.identity.requested` para solicitudes de identidad entre pares;
+- `peer.state.changed` cuando cambia el outcome, reason o `boot_id` remoto de un
+  par;
+- `peers.snapshot` cada 15 minutos mientras haya un par configurado.
 
 Los eventos de ciclo de vida y snapshots incluyen `connection_sequence`, que
 aumenta con cada transición de estado de conexión en el proceso. Los consumidores
@@ -221,6 +273,13 @@ proceso.
 Los logs no incluyen direcciones de clientes, headers sin procesar, query strings
 sin procesar, payloads de requests, mensajes WebSocket ni datos SSE. Son hechos
 de prueba observables, no métricas durables o globales.
+
+Los hechos de pares usan nombres lógicos y reasons estables. No registran hosts
+configurados, IPs resueltas, configuración de proxy, cuerpos de respuesta ni
+errores crudos. El estado de pares se reinicia junto con el proceso; `boot_id`
+identifica la época local y `observed_boot_id` identifica la última época remota.
+Las verificaciones canceladas por el shutdown no reemplazan el último estado
+observado del par.
 
 ## Distribución de la imagen
 

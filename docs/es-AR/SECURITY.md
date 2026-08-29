@@ -24,6 +24,14 @@ locales. Quien pueda ejecutar ese comando obtiene la identidad de red del
 contenedor o Pod; por lo tanto, el acceso a la creación y ejecución de cargas sigue
 siendo un límite de seguridad del cluster.
 
+El monitoreo de pares configurados conserva ese mismo límite. Los destinos
+provienen únicamente del archivo de solo lectura seleccionado por
+`TESTKIT_PEERS_FILE`; las solicitudes HTTP públicas no pueden agregar,
+reemplazar ni activar destinos. Las verificaciones ignoran variables de proxy,
+rechazan redirects, validan certificados HTTPS y devuelven solamente estado
+sanitizado en memoria, sin caché. Tratá el acceso de escritura al archivo como
+permiso para originar tráfico de red desde el workload de Testkit.
+
 ## Reportar una vulnerabilidad
 
 El reporte privado de vulnerabilidades de GitHub todavía no está habilitado en
