@@ -36,9 +36,11 @@ saída. Diagnósticos pontuais continuam exigindo um comando explícito do cont�
 | Probe de rede HTTP/HTTPS | `testkit probe URL` |
 | Identidade e estado de pares configurados | `GET /api/identity`, `GET /api/peers` |
 
-As respostas incluem a versão de build injetada pelo argumento Docker `VERSION`.
-Isso torna testes de rollout e transporte observáveis sem alterar a identidade
-lógica da carga.
+A versão de build injetada pelo argumento Docker `VERSION` é exposta nos
+payloads dos protocolos, nos logs estruturados, no cabeçalho e rodapé do browser
+e no header `Testkit-Version` de toda resposta HTTP, inclusive handshakes
+WebSocket bem-sucedidos. Isso torna testes de rollout e transporte observáveis
+sem alterar a identidade lógica da carga.
 
 ## Pré-requisitos
 
@@ -279,7 +281,7 @@ Releases versionadas publicam imagens multiplataforma no GitHub Container
 Registry:
 
 ```text
-ghcr.io/molejo-platform/testkit:v0.5.0
+ghcr.io/molejo-platform/testkit:v0.6.0
 ```
 
 As tags existem para descoberta. Testes automatizados devem consumir o digest

@@ -9,6 +9,18 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 No changes yet.
 
+## [0.6.0] - 2026-08-29
+
+### Added
+
+- `Testkit-Version` on every HTTP response, including errors, redirects, static
+  assets, SSE streams, and successful WebSocket handshakes.
+
+### Changed
+
+- Browser page footers now display the same build version already used by
+  protocol payloads and structured logs.
+
 ## [0.5.0] - 2026-08-29
 
 ### Added
@@ -108,7 +120,8 @@ No changes yet.
 
 - Initial multi-platform image publication workflow for GitHub Container Registry.
 
-[Unreleased]: https://github.com/molejo-platform/testkit/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/molejo-platform/testkit/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/molejo-platform/testkit/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/molejo-platform/testkit/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/molejo-platform/testkit/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/molejo-platform/testkit/compare/v0.2.0...v0.3.0

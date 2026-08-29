@@ -769,6 +769,81 @@ func TestGraphQLLabFooterHasSingleSeparator(t *testing.T) {
 	}
 }
 
+func TestPageFootersIncludeVersion(t *testing.T) {
+	for _, path := range []string{"/en/", "/en/websocket", "/en/rest", "/en/graphql-lab", "/en/sse"} {
+		t.Run(path, func(t *testing.T) {
+			responseRecorder := httptest.NewRecorder()
+			newHandler().ServeHTTP(responseRecorder, httptest.NewRequest(http.MethodGet, path, nil))
+
+			body := responseRecorder.Body.String()
+			footerStart := strings.Index(body, `<footer class="page-footer">`)
+			if footerStart == -1 {
+				t.Fatal("response does not contain page footer")
+			}
+			footerEnd := strings.Index(body[footerStart:], `</footer>`)
+			if footerEnd == -1 {
+				t.Fatal("page footer is not closed")
+			}
+			footer := body[footerStart : footerStart+footerEnd]
+			if want := "Same-origin browser fixture · build " + version; !strings.Contains(footer, want) {
+				t.Fatalf("page footer does not contain %q", want)
+			}
+		})
+	}
+}
+
+func TestResponsesIncludeVersionHeader(t *testing.T) {
+	tests := []struct {
+		name       string
+		method     string
+		path       string
+		cancel     bool
+		statusCode int
+	}{
+		{name: "REST", method: http.MethodGet, path: "/api/items", statusCode: http.StatusOK},
+		{name: "not found", method: http.MethodGet, path: "/missing", statusCode: http.StatusNotFound},
+		{name: "method not allowed", method: http.MethodPost, path: "/healthz", statusCode: http.StatusMethodNotAllowed},
+		{name: "localized redirect", method: http.MethodGet, path: "/", statusCode: http.StatusFound},
+		{name: "static asset", method: http.MethodGet, path: "/static/app.js", statusCode: http.StatusOK},
+		{name: "SSE", method: http.MethodGet, path: "/events", cancel: true, statusCode: http.StatusOK},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(test.method, test.path, nil)
+			if test.cancel {
+				ctx, cancel := context.WithCancel(request.Context())
+				cancel()
+				request = request.WithContext(ctx)
+			}
+			responseRecorder := httptest.NewRecorder()
+
+			newHandler().ServeHTTP(responseRecorder, request)
+
+			if responseRecorder.Code != test.statusCode {
+				t.Fatalf("status code = %d, want %d", responseRecorder.Code, test.statusCode)
+			}
+			if got := responseRecorder.Header().Get("Testkit-Version"); got != version {
+				t.Fatalf("Testkit-Version = %q, want %q", got, version)
+			}
+		})
+	}
+}
+
+func TestWebSocketHandshakeIncludesVersionHeader(t *testing.T) {
+	server := httptest.NewServer(newHandler())
+	t.Cleanup(server.Close)
+
+	connection, response, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(server.URL, "http")+"/ws", nil)
+	if err != nil {
+		t.Fatalf("dial WebSocket: %v", err)
+	}
+	t.Cleanup(func() { _ = connection.Close() })
+	if got := response.Header.Get("Testkit-Version"); got != version {
+		t.Fatalf("Testkit-Version = %q, want %q", got, version)
+	}
+}
+
 func TestDocumentationListsBrowserLabAliases(t *testing.T) {
 	for _, path := range []string{"README.md", "docs/pt-BR/README.md", "docs/es-AR/README.md"} {
 		t.Run(path, func(t *testing.T) {

@@ -36,9 +36,11 @@ diagnostics remain an explicit container command.
 | HTTP/HTTPS network probe | `testkit probe URL` |
 | Configured peer identity and state | `GET /api/identity`, `GET /api/peers` |
 
-Responses include the build version injected through the Docker `VERSION` build
-argument. This makes rollout and transport tests observable without changing the
-logical identity of the workload.
+The build version injected through the Docker `VERSION` build argument is
+exposed in protocol payloads, structured logs, the browser header and footer,
+and the `Testkit-Version` header on every HTTP response, including successful
+WebSocket handshakes. This makes rollout and transport tests observable without
+changing the logical identity of the workload.
 
 ## Prerequisites
 
@@ -275,7 +277,7 @@ by server shutdown do not replace the last observed peer state.
 Tagged releases publish multi-platform images to GitHub Container Registry:
 
 ```text
-ghcr.io/molejo-platform/testkit:v0.5.0
+ghcr.io/molejo-platform/testkit:v0.6.0
 ```
 
 Tags are provided for discovery. Automated tests should consume the immutable

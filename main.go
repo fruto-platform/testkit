@@ -38,6 +38,7 @@ const (
 	pingPeriod               = (pongWait * 9) / 10
 	correlationHeader        = "X-Testkit-Correlation-ID"
 	correlationQuery         = "correlation_id"
+	versionHeader            = "Testkit-Version"
 )
 
 // webFiles is embedded so the final scratch image needs no filesystem asset.
@@ -315,6 +316,13 @@ func newHandlerWithConfig(config handlerConfig) http.Handler {
 	return newApplication(config).handler
 }
 
+func withVersionHeader(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set(versionHeader, version)
+		next.ServeHTTP(writer, request)
+	})
+}
+
 func newApplication(config handlerConfig) *application {
 	if config.sseInterval <= 0 {
 		config.sseInterval = defaultSSEInterval
@@ -365,7 +373,7 @@ func newApplication(config handlerConfig) *application {
 	})
 
 	return &application{
-		handler:     mux,
+		handler:     withVersionHeader(mux),
 		hub:         webSocketHub,
 		logger:      config.logger,
 		connections: connections,
@@ -943,7 +951,7 @@ func sameWebSocketOrigin(request *http.Request) bool {
 }
 
 func webSocket(writer http.ResponseWriter, request *http.Request, hub *webSocketHub, logger *slog.Logger, stats *connectionStats) {
-	connection, err := webSocketUpgrader.Upgrade(writer, request, nil)
+	connection, err := webSocketUpgrader.Upgrade(writer, request, http.Header{versionHeader: []string{version}})
 	if err != nil {
 		return
 	}
